@@ -1,0 +1,39 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Vosk model (large, download separately)
+vosk-model-*/
+
+# API keys and secrets
+config/api_keys.json
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Memory data (user-specific)
+config/memory.json
+config/notes.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Test files
+test_mic.py
+
+# Screenshots
+screenshots/
