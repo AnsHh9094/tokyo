@@ -1,521 +1,420 @@
 """
-Jarvis AI Assistant — Desktop GUI
-Sleek, animated UI with face visualization, chat log, text input, and settings.
-Based on Mark-X.1 by FatihMakes, enhanced for OpenRouter AI.
+Jarvis AI Assistant — Dramatic Animated GUI (Tkinter Canvas)
+Galaxy-inspired: glowing orb, particles, orbital rings, reactive states.
+Pure Python (no external dependencies beyond tkinter).
 """
-import os
-import json
+import tkinter as tk
+from tkinter import scrolledtext
+from pathlib import Path
 import time
 import random
 import math
-import tkinter as tk
-from collections import deque
-from PIL import Image, ImageTk, ImageDraw, ImageFilter
-from tkinter.scrolledtext import ScrolledText
 import sys
-from pathlib import Path
+import queue
 
 sys.path.insert(0, str(Path(__file__).parent))
-from config import (
-    CONFIG_DIR, ASSETS_DIR, FACE_IMAGE_PATH,
-    UI_WINDOW_SIZE, FACE_IMAGE_SIZE, ASSISTANT_NAME
-)
+from config import CONFIG_DIR, ASSETS_DIR, ASSISTANT_NAME
 
 API_FILE = CONFIG_DIR / "api_keys.json"
 
+# ── Color Palette ────────────────────────────────────────────
+COLORS = {
+    "bg":           "#050510",
+    "orb_core":     "#80e0ff",
+    "orb_mid":      "#2090b0",
+    "orb_outer":    "#0a3040",
+    "particle":     "#40a0c0",
+    "ring":         "#1a4060",
+    "text":         "#c0e8ff",
+    "chat_bg":      "#0a0a1a",
+    "input_bg":     "#0c0c20",
+    "border":       "#1a3050",
+    "accent":       "#00d4ff",
+    "status_standby":   "#4a9eff",
+    "status_listen":    "#ffaa00",
+    "status_speak":     "#00ff88",
+    "status_process":   "#ff4488",
+}
+
+# ── Compact Window Size ──────────────────────────────────────
+WIN_W = 420
+WIN_H = 600
+
+
+class Particle:
+    def __init__(self, cx, cy, w, h):
+        self.cx, self.cy, self.w, self.h = cx, cy, w, h
+        self.reset()
+
+    def reset(self):
+        angle = random.uniform(0, 2 * math.pi)
+        dist = random.uniform(20, 140)
+        self.x = self.cx + math.cos(angle) * dist
+        self.y = self.cy + math.sin(angle) * dist
+        self.vx = random.uniform(-12, 12)
+        self.vy = random.uniform(-20, -4)
+        self.life = 1.0
+        self.decay = random.uniform(0.3, 0.8)
+        self.size = random.uniform(1.0, 2.5)
+
+    def update(self, dt, speed_mult=1.0):
+        self.x += self.vx * dt * speed_mult
+        self.y += self.vy * dt * speed_mult
+        self.life -= self.decay * dt
+        if self.life <= 0 or self.x < 0 or self.x > self.w or self.y < 0 or self.y > self.h:
+            self.reset()
+            self.life = 1.0
+
+
+class OrbitalRing:
+    def __init__(self, radius=80, speed=0.3, segments=50, width=1.0):
+        self.radius = radius
+        self.speed = speed
+        self.segments = segments
+        self.width = width
+        self.angle = random.uniform(0, 2 * math.pi)
+        self.tilt = random.uniform(0.15, 0.4)
+
+    def update(self, dt):
+        self.angle += self.speed * dt
+
 
 class JarvisUI:
-    """
-    Main GUI window for the Jarvis assistant.
-    Features: animated face, chat log, text input, setup wizard, speaking indicator.
-    """
-
     def __init__(self, face_path=None, size=None):
         self.root = tk.Tk()
-        self.root.title(f"{ASSISTANT_NAME} AI Assistant")
-        self.root.resizable(False, False)
-        self.root.geometry(f"{UI_WINDOW_SIZE[0]}x{UI_WINDOW_SIZE[1]}")
-        self.root.configure(bg="#000000")
+        self.root.title(f"{ASSISTANT_NAME} AI")
+        self.root.configure(bg=COLORS["bg"])
 
-        # Try to set icon
-        icon_path = ASSETS_DIR / "icon.ico"
-        if icon_path.exists():
-            try:
-                self.root.iconbitmap(str(icon_path))
-            except Exception:
-                pass
+        # ── Compact centered window ──────────────────────────
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        x = (sw - WIN_W) // 2
+        y = (sh - WIN_H) // 2
+        self.root.geometry(f"{WIN_W}x{WIN_H}+{x}+{y}")
+        self.root.minsize(350, 450)
+        self.root.resizable(True, True)
 
-        self.size = size or FACE_IMAGE_SIZE
-        self.center_y = 0.38
-
-        # Track whether API keys have been saved
-        self.api_keys_ready = self._api_keys_exist()
-
-        # Callbacks (set by main.py)
+        # ── State ────────────────────────────────────────────
+        self.mic_active = False
         self.on_text_input = None
         self.on_mic_toggle = None
+        self.state = "standby"
+        self._msg_queue = queue.Queue()
+        self.api_keys_ready = API_FILE.exists()
 
-        # Mic state
-        self.mic_active = False
+        # ══════════════════════════════════════════════════════
+        #  LAYOUT: Canvas (top) → Status → Chat → Input bar
+        # ══════════════════════════════════════════════════════
 
-        # ── Canvas for face animation ────────────────────────
+        # Animation Canvas — fixed height, fills width
         self.canvas = tk.Canvas(
-            self.root,
-            width=self.size[0],
-            height=self.size[1],
-            bg="#000000",
-            highlightthickness=0
+            self.root, height=200,
+            bg=COLORS["bg"], highlightthickness=0
         )
-        self.canvas.place(relx=0.5, rely=self.center_y, anchor="center")
+        self.canvas.pack(fill=tk.X, padx=0, pady=0)
 
-        # ── Load face image ──────────────────────────────────
-        face_file = face_path
-        if face_file and Path(face_file).exists():
-            self.face_base = (
-                Image.open(face_file)
-                .convert("RGBA")
-                .resize(self.size, Image.LANCZOS)
-            )
-        else:
-            self.face_base = self._create_placeholder_face()
+        # Status label
+        self.status_var = tk.StringVar(value="● STANDBY")
+        self.status_label = tk.Label(
+            self.root, textvariable=self.status_var,
+            font=("Segoe UI", 10, "bold"),
+            fg=COLORS["status_standby"], bg=COLORS["bg"]
+        )
+        self.status_label.pack(pady=(2, 4))
 
-        # ── Halo effect ──────────────────────────────────────
-        self.halo_base = self._create_halo(self.size, radius=220, y_offset=-50)
+        # ══════════════════════════════════════════════════════
+        # BOTTOM CONTROLS — packed first with side=BOTTOM
+        # so they're ALWAYS visible regardless of window size
+        # ══════════════════════════════════════════════════════
+
+        # ── Input bar (BOTTOM-most) ──────────────────────────
+        input_frame = tk.Frame(self.root, bg=COLORS["bg"])
+        input_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 8))
+
+        self.text_entry = tk.Entry(
+            input_frame,
+            font=("Segoe UI", 11),
+            bg=COLORS["input_bg"], fg="#ffffff",
+            insertbackground=COLORS["accent"],
+            relief=tk.FLAT, bd=6
+        )
+        self.text_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.text_entry.bind("<Return>", self._on_enter)
+
+        send_btn = tk.Button(
+            input_frame, text="▶", width=3,
+            font=("Segoe UI", 10, "bold"),
+            fg=COLORS["accent"], bg="#0a1a30",
+            activebackground="#0f2a40", activeforeground="#00ffff",
+            relief=tk.FLAT, bd=0,
+            command=self._send_text
+        )
+        send_btn.pack(side=tk.RIGHT, padx=(6, 0))
+
+        # ── Mic Toggle — LARGE bar above input ───────────────
+        self.mic_btn = tk.Button(
+            self.root, text="⏻  MIC OFF", height=2,
+            font=("Segoe UI", 12, "bold"),
+            fg="#ff4444", bg="#1a0000",
+            activebackground="#2a0000", activeforeground="#ff6666",
+            relief=tk.FLAT, bd=0, cursor="hand2",
+            command=self._mic_click
+        )
+        self.mic_btn.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(4, 4))
+
+        # ══════════════════════════════════════════════════════
+        # CHAT LOG — fills remaining space between status & mic
+        # ══════════════════════════════════════════════════════
+        chat_frame = tk.Frame(self.root, bg=COLORS["border"], bd=1, relief=tk.FLAT)
+        chat_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 6))
+
+        self.chat_log = scrolledtext.ScrolledText(
+            chat_frame, wrap=tk.WORD, state=tk.DISABLED,
+            bg=COLORS["chat_bg"], fg=COLORS["text"],
+            font=("Consolas", 10),
+            insertbackground=COLORS["accent"],
+            relief=tk.FLAT, bd=6,
+            selectbackground="#1a4060"
+        )
+        self.chat_log.pack(fill=tk.BOTH, expand=True)
 
         # ── Animation state ──────────────────────────────────
-        self.speaking = False
-        self.scale = 1.0
-        self.target_scale = 1.0
-        self.halo_alpha = 70
-        self.target_halo_alpha = 70
-        self.last_target_time = time.time()
+        self.orb_radius = 35.0
+        self.orb_target = 35.0
+        self.orb_pulse = 0.0
+        self.orb_pulse_speed = 1.5
+        self.frame_count = 0
+        self.last_time = time.time()
+        self.particle_speed = 1.0
 
-        # ── Chat log ─────────────────────────────────────────
-        self.text_box = ScrolledText(
-            self.root,
-            fg="#8ffcff",
-            bg="#000000",
-            insertbackground="#8ffcff",
-            height=8,
-            borderwidth=0,
-            wrap="word",
-            font=("Consolas", 10),
-            padx=12,
-            pady=8
-        )
-        self.text_box.place(relx=0.5, rely=0.78, anchor="center",
-                           relwidth=0.95)
-        self.text_box.configure(state="disabled")
+        # Dynamic center — updated on resize
+        self.cx = WIN_W // 2
+        self.cy = 100  # Center of 200px canvas
+        self.canvas.bind("<Configure>", self._on_canvas_resize)
 
-        # ── Bottom bar: text input + mic + send ──────────────
-        input_frame = tk.Frame(self.root, bg="#000000")
-        input_frame.place(relx=0.5, rely=0.95, anchor="center", relwidth=0.95)
+        # Particles
+        self.particles = []
+        for _ in range(35):
+            p = Particle(self.cx, self.cy, WIN_W, 200)
+            p.life = random.uniform(0, 1)
+            self.particles.append(p)
 
-        # Mic toggle button
-        self.mic_btn = tk.Button(
-            input_frame,
-            text="🎙 OFF",
-            command=self._toggle_mic,
-            bg="#1a0000",
-            fg="#ff4444",
-            activebackground="#330000",
-            activeforeground="#ff6666",
-            font=("Consolas", 10, "bold"),
-            borderwidth=0,
-            padx=10,
-            pady=4,
-            cursor="hand2"
-        )
-        self.mic_btn.pack(side="left", padx=(0, 6))
+        # Rings (smaller for compact window)
+        self.rings = [
+            OrbitalRing(radius=70, speed=0.3, segments=50, width=1.0),
+            OrbitalRing(radius=95, speed=-0.2, segments=40, width=0.8),
+            OrbitalRing(radius=120, speed=0.15, segments=30, width=0.6),
+        ]
 
-        # Text entry
-        self.text_input = tk.Entry(
-            input_frame,
-            fg="#8ffcff",
-            bg="#0a0a0a",
-            insertbackground="#8ffcff",
-            borderwidth=1,
-            relief="solid",
-            font=("Consolas", 11),
-        )
-        self.text_input.pack(side="left", fill="x", expand=True, padx=(0, 6))
-        self.text_input.bind("<Return>", self._on_enter)
-
-        # Send button
-        send_btn = tk.Button(
-            input_frame,
-            text="SEND",
-            command=self._on_send,
-            bg="#001a2e",
-            fg="#8ffcff",
-            activebackground="#003344",
-            activeforeground="#ffffff",
-            font=("Consolas", 10, "bold"),
-            borderwidth=0,
-            padx=12,
-            pady=4,
-            cursor="hand2"
-        )
-        send_btn.pack(side="right")
-
-        # Placeholder text
-        self.text_input.insert(0, "Type a command or speak...")
-        self.text_input.config(fg="#555555")
-        self.text_input.bind("<FocusIn>", self._clear_placeholder)
-        self.text_input.bind("<FocusOut>", self._add_placeholder)
-
-        # ── Typing animation queue ───────────────────────────
-        self.typing_queue = deque()
-        self.is_typing = False
-
-        # ── Status label ─────────────────────────────────────
-        self.status_label = tk.Label(
-            self.root,
-            text="● STANDBY",
-            fg="#4a9eff",
-            bg="#000000",
-            font=("Consolas", 9, "bold")
-        )
-        self.status_label.place(relx=0.5, rely=0.01, anchor="n")
-
-        # ── Show setup if no API keys ────────────────────────
-        if not self.api_keys_ready:
-            self._show_setup_ui()
-
-        # ── Start animation loop ─────────────────────────────
+        # Start loops
         self._animate()
-        self.root.protocol("WM_DELETE_WINDOW", lambda: os._exit(0))
+        self._process_queue()
+        self.root.protocol("WM_DELETE_WINDOW", self.hide_window)
+        
+        # Force window to front on startup
+        self.root.deiconify()
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        self.root.after(1000, lambda: self.root.attributes("-topmost", False))
 
     # ══════════════════════════════════════════════════════════
-    #  TEXT INPUT HANDLING
+    #  CANVAS RESIZE HANDLER — keeps orb centered
     # ══════════════════════════════════════════════════════════
-
-    def _clear_placeholder(self, event):
-        if self.text_input.get() == "Type a command or speak...":
-            self.text_input.delete(0, tk.END)
-            self.text_input.config(fg="#8ffcff")
-
-    def _add_placeholder(self, event):
-        if not self.text_input.get():
-            self.text_input.insert(0, "Type a command or speak...")
-            self.text_input.config(fg="#555555")
-
-    def _toggle_mic(self):
-        """Toggle microphone on/off."""
-        if self.mic_active:
-            self.set_mic_active(False)
-        else:
-            self.set_mic_active(True)
-
-        if self.on_mic_toggle:
-            self.on_mic_toggle(self.mic_active)
-
-    def set_mic_active(self, active: bool):
-        """Update mic button appearance."""
-        self.mic_active = active
-        try:
-            if active:
-                self.mic_btn.configure(
-                    text="🎙 ON",
-                    bg="#001a00",
-                    fg="#00ff88",
-                    activebackground="#003300",
-                    activeforeground="#00ff88"
-                )
-            else:
-                self.mic_btn.configure(
-                    text="🎙 OFF",
-                    bg="#1a0000",
-                    fg="#ff4444",
-                    activebackground="#330000",
-                    activeforeground="#ff6666"
-                )
-        except Exception:
-            pass
-
-    def _on_enter(self, event):
-        self._on_send()
-
-    def _on_send(self):
-        text = self.text_input.get().strip()
-        if not text or text == "Type a command or speak...":
-            return
-
-        self.text_input.delete(0, tk.END)
-
-        # Call the handler set by main.py
-        if self.on_text_input:
-            self.on_text_input(text)
+    def _on_canvas_resize(self, event):
+        self.cx = event.width // 2
+        self.cy = event.height // 2
+        for p in self.particles:
+            p.cx = self.cx
+            p.cy = self.cy
+            p.w = event.width
+            p.h = event.height
 
     # ══════════════════════════════════════════════════════════
-    #  PLACEHOLDER FACE
+    #  WINDOW MANAGEMENT
     # ══════════════════════════════════════════════════════════
+    def hide_window(self):
+        self.root.withdraw()
 
-    def _create_placeholder_face(self):
-        w, h = self.size
-        img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        cx, cy = w // 2, h // 2
+    def show_window(self):
+        self.root.deiconify()
+        self.root.lift()
+        self.root.focus_force()
 
-        r = min(w, h) // 2 - 60
-        for i in range(0, 360, 2):
-            angle = math.radians(i)
-            alpha = int(100 + 50 * abs(math.sin(angle * 3)))
-            x1 = cx + int((r - 2) * math.cos(angle))
-            y1 = cy + int((r - 2) * math.sin(angle))
-            x2 = cx + int((r + 2) * math.cos(angle))
-            y2 = cy + int((r + 2) * math.sin(angle))
-            draw.line([(x1, y1), (x2, y2)], fill=(0, 180, 255, alpha), width=2)
-
-        r2 = r - 80
-        draw.ellipse(
-            [cx - r2, cy - r2, cx + r2, cy + r2],
-            outline=(0, 200, 255, 150), width=2
-        )
-
-        r3 = 20
-        for ring in range(r3, 0, -2):
-            a = int(200 * (1 - ring / r3))
-            draw.ellipse(
-                [cx - ring, cy - ring, cx + ring, cy + ring],
-                fill=(0, 220, 255, a)
-            )
-
-        for offset in [-60, 60]:
-            draw.line(
-                [(cx + offset - 35, cy - 30), (cx + offset + 35, cy - 30)],
-                fill=(0, 220, 255, 200), width=3
-            )
-            draw.line(
-                [(cx + offset - 25, cy - 20), (cx + offset + 25, cy - 20)],
-                fill=(0, 180, 255, 120), width=2
-            )
-
-        return img
-
-    # ══════════════════════════════════════════════════════════
-    #  HALO EFFECT
-    # ══════════════════════════════════════════════════════════
-
-    def _create_halo(self, size, radius=220, y_offset=-50):
-        w, h = size
-        halo = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(halo)
-
-        cx = w // 2
-        cy = h // 2 + y_offset
-
-        for r in range(radius, 0, -12):
-            alpha = int(70 * (1 - r / radius))
-            draw.ellipse(
-                (cx - r, cy - r, cx + r, cy + r),
-                fill=(0, 180, 255, alpha)
-            )
-
-        return halo.filter(ImageFilter.GaussianBlur(30))
-
-    # ══════════════════════════════════════════════════════════
-    #  ANIMATION LOOP
-    # ══════════════════════════════════════════════════════════
-
-    def _animate(self):
-        now = time.time()
-
-        if now - self.last_target_time > (0.25 if self.speaking else 0.7):
-            if self.speaking:
-                self.target_scale = random.uniform(1.02, 1.1)
-                self.target_halo_alpha = random.randint(120, 150)
-            else:
-                self.target_scale = random.uniform(1.004, 1.012)
-                self.target_halo_alpha = random.randint(60, 80)
-
-            self.last_target_time = now
-
-        scale_speed = 0.45 if self.speaking else 0.25
-        halo_speed = 0.40 if self.speaking else 0.25
-
-        self.scale += (self.target_scale - self.scale) * scale_speed
-        self.halo_alpha += (self.target_halo_alpha - self.halo_alpha) * halo_speed
-
-        w, h = self.size
-        frame = Image.new("RGBA", (w, h), (0, 0, 0, 255))
-
-        halo = self.halo_base.copy()
-        halo.putalpha(int(max(0, min(255, self.halo_alpha))))
-        frame.alpha_composite(halo)
-
-        face = self.face_base.resize(
-            (int(w * self.scale), int(h * self.scale)),
-            Image.LANCZOS
-        )
-        fx = (w - face.size[0]) // 2
-        fy = (h - face.size[1]) // 2
-        frame.alpha_composite(face, (fx, fy))
-
-        img = ImageTk.PhotoImage(frame)
-        self.canvas.delete("all")
-        self.canvas.create_image(w // 2, h // 2, image=img)
-        self.canvas.image = img
-
-        self.root.after(16, self._animate)
-
-    # ══════════════════════════════════════════════════════════
-    #  SPEAKING STATE
-    # ══════════════════════════════════════════════════════════
-
-    def start_speaking(self):
-        self.speaking = True
-        self._update_status("● SPEAKING", "#00ff88")
-
-    def stop_speaking(self):
-        self.speaking = False
-        self._update_status("● LISTENING", "#ffa500")
-
-    def set_standby(self):
-        self._update_status("● STANDBY", "#4a9eff")
-
-    def set_listening(self):
-        self._update_status("● LISTENING", "#ffa500")
-
-    def set_processing(self):
-        self._update_status("● PROCESSING", "#ff4488")
-
-    def _update_status(self, text, color):
-        try:
-            self.status_label.configure(text=text, fg=color)
-        except Exception:
-            pass
-
-    # ══════════════════════════════════════════════════════════
-    #  CHAT LOG — char-by-char typing
-    # ══════════════════════════════════════════════════════════
-
-    def write_log(self, text: str):
-        self.typing_queue.append(text)
-        if not self.is_typing:
-            self._start_typing()
-
-    def _start_typing(self):
-        if not self.typing_queue:
-            self.is_typing = False
-            return
-
-        self.is_typing = True
-        text = self.typing_queue.popleft()
-        self.text_box.configure(state="normal")
-        self._type_char(text, 0)
-
-    def _type_char(self, text, i):
-        if i < len(text):
-            self.text_box.insert(tk.END, text[i])
-            self.text_box.see(tk.END)
-            self.root.after(12, self._type_char, text, i + 1)
-        else:
-            self.text_box.insert(tk.END, "\n")
-            self.text_box.configure(state="disabled")
-            self.root.after(40, self._start_typing)
-
-    def clear_log(self):
-        self.text_box.configure(state="normal")
-        self.text_box.delete("1.0", tk.END)
-        self.text_box.configure(state="disabled")
-
-    # ══════════════════════════════════════════════════════════
-    #  API KEY SETUP
-    # ══════════════════════════════════════════════════════════
-
-    def _api_keys_exist(self):
-        return API_FILE.exists()
-
-    def _show_setup_ui(self):
-        self.setup_frame = tk.Frame(
-            self.root,
-            bg="#050505",
-            highlightbackground="#00cfff",
-            highlightthickness=1
-        )
-        self.setup_frame.place(relx=0.5, rely=0.5, anchor="center")
-
-        tk.Label(
-            self.setup_frame,
-            text=f"⚡ {ASSISTANT_NAME.upper()} SETUP",
-            fg="#8ffcff",
-            bg="#050505",
-            font=("Consolas", 14, "bold")
-        ).pack(pady=(15, 5))
-
-        tk.Label(
-            self.setup_frame,
-            text="Get your free API key from: openrouter.ai/keys",
-            fg="#555555",
-            bg="#050505",
-            font=("Consolas", 8)
-        ).pack(pady=(0, 10))
-
-        self.openrouter_entry = self._setup_entry("OpenRouter API Key")
-        self.serpapi_entry = self._setup_entry("SerpAPI Key (optional)")
-
-        tk.Button(
-            self.setup_frame,
-            text="INITIALIZE SYSTEM",
-            command=self._save_api_keys,
-            bg="#001a2e",
-            fg="#8ffcff",
-            activebackground="#003344",
-            activeforeground="#ffffff",
-            font=("Consolas", 11, "bold"),
-            borderwidth=0,
-            padx=20,
-            pady=8,
-            cursor="hand2"
-        ).pack(pady=15)
-
-    def _setup_entry(self, label_text):
-        tk.Label(
-            self.setup_frame,
-            text=label_text,
-            fg="#8ffcff",
-            bg="#050505",
-            font=("Consolas", 10)
-        ).pack(pady=(8, 2))
-
-        entry = tk.Entry(
-            self.setup_frame,
-            width=50,
-            fg="#8ffcff",
-            bg="#0a0a0a",
-            insertbackground="#8ffcff",
-            borderwidth=1,
-            relief="solid",
-            font=("Consolas", 10),
-            show="•"
-        )
-        entry.pack(pady=(0, 6), padx=15)
-        return entry
-
-    def _save_api_keys(self):
-        openrouter_key = self.openrouter_entry.get().strip()
-        serpapi_key = self.serpapi_entry.get().strip()
-
-        if not openrouter_key:
-            return
-
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-
-        with open(API_FILE, "w", encoding="utf-8") as f:
-            json.dump({
-                "openrouter_api_key": openrouter_key,
-                "serpapi_key": serpapi_key
-            }, f, indent=4)
-
-        self.setup_frame.destroy()
-        self.api_keys_ready = True
-        self.write_log(f"✅ API keys saved successfully.")
-        self.write_log(f"⚡ {ASSISTANT_NAME} systems initializing...")
-
-    # ══════════════════════════════════════════════════════════
-    #  MAIN LOOP
-    # ══════════════════════════════════════════════════════════
+    def quit_app(self):
+        self.root.destroy()
 
     def run(self):
         self.root.mainloop()
+
+    # ══════════════════════════════════════════════════════════
+    #  ANIMATION LOOP (~30fps)
+    # ══════════════════════════════════════════════════════════
+    def _animate(self):
+        now = time.time()
+        dt = min(now - self.last_time, 0.1)
+        self.last_time = now
+        self.frame_count += 1
+
+        self.canvas.delete("all")
+
+        self._update_orb(dt)
+        self._update_particles(dt)
+        for ring in self.rings:
+            ring.update(dt)
+
+        self._draw_bg_glow()
+        self._draw_rings()
+        self._draw_particles()
+        self._draw_orb()
+        self._draw_label()
+
+        self.root.after(33, self._animate)
+
+    def _update_orb(self, dt):
+        targets = {"speaking": (45, 3.0), "processing": (30, 5.0),
+                    "listening": (38, 2.0), "standby": (35, 1.5)}
+        t, s = targets.get(self.state, (35, 1.5))
+        self.orb_target = t
+        self.orb_pulse_speed = s
+        self.orb_radius += (self.orb_target - self.orb_radius) * dt * 3.0
+        self.orb_pulse = math.sin(time.time() * self.orb_pulse_speed) * 0.5 + 0.5
+
+        if self.state == "processing":
+            self.cx = self.canvas.winfo_width() // 2 + int(math.sin(time.time() * 20) * 2)
+
+    def _update_particles(self, dt):
+        speeds = {"speaking": 2.5, "processing": 4.0, "listening": 1.5, "standby": 0.8}
+        self.particle_speed = speeds.get(self.state, 0.8)
+        for p in self.particles:
+            p.update(dt, self.particle_speed)
+
+    def _draw_bg_glow(self):
+        for size, color in [(160, "#030810"), (110, "#051020"), (70, "#081830")]:
+            s = int(size * (1 + self.orb_pulse * 0.1))
+            self.canvas.create_oval(self.cx-s, self.cy-s, self.cx+s, self.cy+s, fill=color, outline="")
+
+    def _draw_rings(self):
+        for ring in self.rings:
+            pts = []
+            for i in range(ring.segments + 1):
+                t = (i / ring.segments) * 2 * math.pi
+                rx = ring.radius * math.cos(t + ring.angle)
+                ry = ring.radius * math.sin(t + ring.angle) * ring.tilt
+                pts.append((self.cx + rx, self.cy + ry))
+            for i in range(len(pts) - 1):
+                a = abs(math.sin((i / ring.segments) * math.pi))
+                if a > 0.3:
+                    self.canvas.create_line(pts[i][0], pts[i][1], pts[i+1][0], pts[i+1][1],
+                                            fill=COLORS["ring"], width=ring.width)
+
+    def _draw_particles(self):
+        for p in self.particles:
+            if p.life > 0:
+                a = max(0, min(1, p.life))
+                s = int(p.size * a)
+                if s > 0:
+                    c = f"#{int(64*a):02x}{int(160*a):02x}{int(192*a):02x}"
+                    self.canvas.create_oval(p.x-s, p.y-s, p.x+s, p.y+s, fill=c, outline="")
+
+    def _draw_orb(self):
+        r = self.orb_radius
+        for gr, gc in [(r*2.2,"#010812"),(r*1.7,"#021424"),(r*1.3,"#032030"),(r*1.1,"#053848")]:
+            g = int(gr * (1 + self.orb_pulse * 0.2))
+            self.canvas.create_oval(self.cx-g, self.cy-g, self.cx+g, self.cy+g, fill=gc, outline="")
+        cr = int(r * (1 + self.orb_pulse * 0.15))
+        self.canvas.create_oval(self.cx-cr-2, self.cy-cr-2, self.cx+cr+2, self.cy+cr+2,
+                                fill="", outline=COLORS["orb_mid"], width=1.5)
+        self.canvas.create_oval(self.cx-cr, self.cy-cr, self.cx+cr, self.cy+cr,
+                                fill=COLORS["orb_outer"], outline="")
+        ir = int(cr * 0.6)
+        self.canvas.create_oval(self.cx-ir, self.cy-ir, self.cx+ir, self.cy+ir,
+                                fill=COLORS["orb_mid"], outline="")
+        br = int(cr * 0.3)
+        self.canvas.create_oval(self.cx-br, self.cy-br, self.cx+br, self.cy+br,
+                                fill=COLORS["orb_core"], outline="")
+
+    def _draw_label(self):
+        self.canvas.create_text(self.cx, self.cy,
+            text=ASSISTANT_NAME[0] if ASSISTANT_NAME else "J",
+            font=("Segoe UI", 14, "bold"), fill="#ffffff")
+
+    # ══════════════════════════════════════════════════════════
+    #  PUBLIC API (thread-safe via queue)
+    # ══════════════════════════════════════════════════════════
+    def write_log(self, text):
+        self._msg_queue.put(("log", text))
+
+    def start_speaking(self):
+        self._msg_queue.put(("state", "speaking"))
+
+    def stop_speaking(self):
+        self._msg_queue.put(("state", "listening"))
+
+    def set_listening(self):
+        self._msg_queue.put(("state", "listening"))
+
+    def set_processing(self):
+        self._msg_queue.put(("state", "processing"))
+
+    def set_standby(self):
+        self._msg_queue.put(("state", "standby"))
+
+    def set_mic_active(self, active):
+        self._msg_queue.put(("mic", active))
+
+    def _process_queue(self):
+        try:
+            while True:
+                t, d = self._msg_queue.get_nowait()
+                if t == "log":
+                    self._do_log(d)
+                elif t == "state":
+                    self._do_state(d)
+                elif t == "mic":
+                    self._do_mic(d)
+        except queue.Empty:
+            pass
+        self.root.after(50, self._process_queue)
+
+    def _do_log(self, text):
+        self.chat_log.config(state=tk.NORMAL)
+        self.chat_log.insert(tk.END, text + "\n")
+        self.chat_log.config(state=tk.DISABLED)
+        self.chat_log.see(tk.END)
+
+    def _do_state(self, state):
+        self.state = state
+        m = {"standby": ("● STANDBY", COLORS["status_standby"]),
+             "listening": ("◉ LISTENING", COLORS["status_listen"]),
+             "speaking": ("◈ SPEAKING", COLORS["status_speak"]),
+             "processing": ("◆ PROCESSING", COLORS["status_process"])}
+        txt, col = m.get(state, ("● STANDBY", COLORS["status_standby"]))
+        self.status_var.set(txt)
+        self.status_label.config(fg=col)
+
+    def _do_mic(self, active):
+        self.mic_active = active
+        if active:
+            self.mic_btn.config(text="◉  MIC LIVE", fg="#00ff88", bg="#001a0a")
+        else:
+            self.mic_btn.config(text="⏻  MIC OFF", fg="#ff4444", bg="#1a0000")
+
+    # ══════════════════════════════════════════════════════════
+    #  INPUT
+    # ══════════════════════════════════════════════════════════
+    def _mic_click(self):
+        if self.on_mic_toggle:
+            self.on_mic_toggle(not self.mic_active)
+
+    def _on_enter(self, event):
+        self._send_text()
+
+    def _send_text(self):
+        text = self.text_entry.get().strip()
+        if text and self.on_text_input:
+            self.write_log(f"You: {text}")
+            self.on_text_input(text)
+            self.text_entry.delete(0, tk.END)
+
+    def _show_setup_ui(self):
+        self.write_log("⚠️ API Keys Missing!")

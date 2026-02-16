@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jarvis Remote</title>
+    <style>
+        :root {
+            --primary: #00ffff;
+            --bg: #0a0a0a;
+            --text: #ffffff;
+            --btn-bg: rgba(0, 255, 255, 0.1);
+            --btn-border: rgba(0, 255, 255, 0.3);
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        h1 {
+            font-weight: 200;
+            letter-spacing: 2px;
+            margin-bottom: 2rem;
+            text-shadow: 0 0 10px var(--primary);
+            font-size: 1.5rem;
+        }
+
+        /* Mic Button */
+        #mic-btn {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: var(--btn-bg);
+            border: 2px solid var(--primary);
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+            color: var(--primary);
+            font-size: 2.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 2rem;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #mic-btn:active {
+            transform: scale(0.95);
+        }
+
+        #mic-btn.listening {
+            background: rgba(255, 0, 0, 0.2);
+            border-color: #ff0000;
+            box-shadow: 0 0 40px rgba(255, 0, 0, 0.5);
+            animation: pulse 1.5s infinite;
+        }
+
+        /* Media Controls */
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 2rem;
+        }
+
+        .btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 12px;
+            background: #1a1a1a;
+            border: 1px solid var(--btn-border);
+            color: var(--primary);
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn:active {
+            background: var(--primary);
+            color: #000;
+            transform: translateY(2px);
+        }
+
+        .btn-large {
+            grid-column: span 1;
+            font-size: 1.5rem;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        #status {
+            margin-top: 1rem;
+            font-size: 1rem;
+            color: #888;
+            min-height: 1.5em;
+        }
+
+        #transcript {
+            margin-top: 0.5rem;
+            padding: 0.8rem;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #111;
+            width: 80%;
+            max-width: 400px;
+            text-align: center;
+            min-height: 40px;
+            font-size: 0.9rem;
+            color: #ccc;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>JARVIS REMOTE</h1>
+
+    <div class="controls">
+        <div class="btn" onclick="sendCommand('previous song')">⏮</div>
+        <div class="btn" onclick="sendCommand('pause music')">⏯</div>
+        <div class="btn" onclick="sendCommand('next song')">⏭</div>
+
+        <div class="btn" onclick="sendCommand('volume down')">🔉</div>
+        <div class="btn" onclick="sendCommand('mute volume')">🔇</div>
+        <div class="btn" onclick="sendCommand('volume up')">🔊</div>
+    </div>
+
+    <div id="mic-btn" onclick="toggleListening()">
+        🎙️
+    </div>
+
+    <div id="status">Tap to Speak</div>
+    <div id="transcript">...</div>
+
+    <script>
+        const micBtn = document.getElementById('mic-btn');
+        const statusEl = document.getElementById('status');
+        const transcriptEl = document.getElementById('transcript');
+        let recognition;
+        let isListening = false;
+
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isListening = true;
+                micBtn.classList.add('listening');
+                statusEl.textContent = "Listening...";
+                transcriptEl.textContent = "...";
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                micBtn.classList.remove('listening');
+                statusEl.textContent = "Processing...";
+            };
+
+            recognition.onresult = (event) => {
+                const text = event.results[0][0].transcript;
+                transcriptEl.textContent = text;
+                sendCommand(text);
+            };
+
+            recognition.onerror = (event) => {
+                statusEl.textContent = "Error: " + event.error;
+                isListening = false;
+                micBtn.classList.remove('listening');
+            };
+        } else {
+            statusEl.textContent = "Web Speech API not supported.";
+        }
+
+        function toggleListening() {
+            if (!recognition) return;
+            if (isListening) {
+                recognition.stop();
+            } else {
+                recognition.start();
+            }
+        }
+
+        async function sendCommand(text) {
+            // Visual feedback
+            statusEl.textContent = "Sending: " + text;
+
+            try {
+                const response = await fetch('/command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text })
+                });
+                const data = await response.json();
+                statusEl.textContent = "Sent: " + text;
+                statusEl.style.color = "#00ff00";
+
+                setTimeout(() => {
+                    statusEl.textContent = "Ready";
+                    statusEl.style.color = "#888";
+                }, 1500);
+
+            } catch (error) {
+                statusEl.textContent = "Connection Failed";
+                statusEl.style.color = "#ff0000";
+            }
+        }
+    </script>
+</body>
+
+</html>

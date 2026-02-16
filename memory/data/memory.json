@@ -1,0 +1,20 @@
+{
+  "identity": {
+    "name": {
+      "value": "Ansh"
+    },
+    "profession": {
+      "value": "Developer"
+    }
+  },
+  "preferences": {
+    "preferred_name": {
+      "value": "Tokyo"
+    },
+    "theme": {
+      "value": "Dark Mode"
+    }
+  },
+  "relationships": {},
+  "emotional_state": {}
+}

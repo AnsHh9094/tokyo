@@ -12,6 +12,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.tts import edge_speak
+from core.browser import open_url
+import webbrowser
 
 REQUIRED_PARAMS = ["receiver", "message_text", "platform"]
 
@@ -63,6 +65,45 @@ def send_message(parameters: dict, response: str = None, player=None, session_me
     receiver = session_memory.get_parameter("receiver").strip()
     platform = session_memory.get_parameter("platform").strip() or "WhatsApp"
     message_text = session_memory.get_parameter("message_text").strip()
+
+    # ══════════════════════════════════════════════════════
+    #  INSTAGRAM SUPPORT (Web)
+    # ══════════════════════════════════════════════════════
+    if "instagram" in platform.lower():
+        try:
+            # Use deep link to open DM directly
+            # Receiver must be the exact username
+            url = f"https://ig.me/m/{receiver}"
+            
+            if response:
+                edge_speak(response, player)
+            
+            open_url(url)  # Use core.browser logic to select profile
+            
+            # Instagram takes time to load
+            time.sleep(6.0) 
+            
+            # Type message
+            pyperclip.copy(message_text)
+            pyautogui.hotkey("ctrl", "v")
+            time.sleep(0.5)
+            
+            # Send
+            pyautogui.press("enter")
+            
+            success_msg = f"Sir, message sent to {receiver} on Instagram."
+            if player:
+                player.write_log(f"✅ {success_msg}")
+            edge_speak(success_msg, player)
+            return True
+
+        except Exception as e:
+            print(f"IG Error: {e}")
+            return False
+
+    # ══════════════════════════════════════════════════════
+    #  DESKTOP APPS (WhatsApp, Telegram)
+    # ══════════════════════════════════════════════════════
 
     if response:
         if player:

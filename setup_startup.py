@@ -42,17 +42,39 @@ WshShell.Run """{python_exe}"" ""{main_py}""", 0, False
     with open(vbs_path, "w", encoding="utf-8") as f:
         f.write(vbs_content)
 
+    # Create a Desktop shortcut as well
+    desktop = Path(os.environ.get("USERPROFILE", "")) / "Desktop"
+    desktop_shortcut = desktop / "Jarvis AI.lnk"
+    
+    try:
+        import win32com.client
+        shell = win32com.client.Dispatch("WScript.Shell")
+        shortcut = shell.CreateShortCut(str(desktop_shortcut))
+        shortcut.TargetPath = str(python_exe)
+        shortcut.Arguments = f'"{main_py}"'
+        # Run minimized/no-console if possible, though shortcut directly to pythonw should be silent
+        shortcut.WorkingDirectory = str(project_dir)
+        shortcut.IconLocation = str(project_dir / "assets" / "icon.ico")
+        shortcut.Save()
+        print(f"✅ Desktop shortcut created: {desktop_shortcut}")
+    except Exception as e:
+        print(f"⚠️ Could not create desktop shortcut (requires pywin32): {e}")
+        # Fallback: Create a batch file on desktop if pywin32 fails
+        bat_path = desktop / "Jarvis AI.bat"
+        with open(bat_path, "w") as f:
+            f.write(f'@echo off\ncd /d "{project_dir}"\nstart "" "{python_exe}" "{main_py}"')
+        print(f"📝 Created batch file on Desktop instead: {bat_path}")
+
     print("=" * 50)
     print("✅ Jarvis added to Windows Startup!")
-    print(f"   Shortcut: {vbs_path}")
+    print(f"   Startup Script: {vbs_path}")
     print(f"   Python:   {python_exe}")
     print(f"   Project:  {project_dir}")
     print()
     print("   Jarvis will now start automatically when")
     print("   you log into Windows.")
     print()
-    print("   To remove: delete the file at")
-    print(f"   {vbs_path}")
+    print("   To remove: run this script with --remove")
     print("=" * 50)
     return True
 

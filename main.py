@@ -16,18 +16,35 @@ sys.path.insert(0, str(BASE_DIR))
 from core.speech_to_text import record_voice, stop_listening, check_microphone
 from core.llm import get_llm_output, test_connection
 from core.tts import edge_speak, stop_speaking
+from core.server import start_server, push_response, push_status, push_log
+from core.clap import ClapListener
+import socket
+import ctypes
+
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return "127.0.0.1"
 from ui import JarvisUI
-from config import ASSISTANT_NAME, FACE_IMAGE_PATH
+from config import ASSISTANT_NAME, FACE_IMAGE_PATH, VOSK_MODEL_PATH
 
 from actions.open_app import open_app
 from actions.web_search import web_search
 from actions.weather_report import weather_action
 from actions.send_message import send_message
+from actions.make_call import make_call
 from actions.system_control import (
     system_info, file_operation, clipboard_action, take_screenshot,
     volume_control, set_timer, calculate, take_note_action,
     read_notes_action, shutdown_action
 )
+from actions.media_control import media_control, spotify_play, youtube_play
+from actions.linkedin import create_linkedin_post
 
 from memory.memory_manager import load_memory, update_memory, minimal_memory_for_prompt
 from memory.temporary_memory import TemporaryMemory
@@ -47,6 +64,7 @@ ACTION_MAP = {
     "search": web_search,
     "weather_report": weather_action,
     "send_message": send_message,
+    "make_call": make_call,
     "system_info": system_info,
     "file_operation": file_operation,
     "clipboard": clipboard_action,
@@ -57,6 +75,10 @@ ACTION_MAP = {
     "take_note": take_note_action,
     "read_notes": read_notes_action,
     "shutdown": shutdown_action,
+    "media_control": media_control,
+    "spotify_play": spotify_play,
+    "youtube_play": youtube_play,
+    "create_content": create_linkedin_post,
 }
 
 
@@ -66,6 +88,7 @@ ACTION_MAP = {
 
 voice_active = threading.Event()
 voice_thread_started = False
+_ui_ref = [None]  # Mutable reference for mic_toggle_handler
 
 
 def voice_listener():
@@ -99,6 +122,9 @@ def mic_toggle_handler(active: bool):
         voice_active.clear()
         stop_listening()
         print("🔇 Microphone OFF")
+    # Update the UI button state
+    if _ui_ref[0]:
+        _ui_ref[0].set_mic_active(active)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -115,10 +141,30 @@ def handle_text_input(text: str):
 #  PROCESS A SINGLE INPUT
 # ══════════════════════════════════════════════════════════════
 
+# ══════════════════════════════════════════════════════════════
+#  PROCESS A SINGLE INPUT
+# ══════════════════════════════════════════════════════════════
+
+COMMON_MISHEARINGS = {
+    "is it time": "what is the time",
+    "what's the time": "what is the time",
+    "tell me the time": "what is the time",
+    "open no pad": "open notepad",
+    "open know pad": "open notepad",
+    "open google chrome": "open chrome",
+    "stop lease": "stop list",
+}
+
 def process_input(user_text: str, ui: JarvisUI):
     """Process one user input (from voice or text)."""
 
     user_lower = user_text.lower().strip()
+
+    # Fix common mishearings
+    for bad, good in COMMON_MISHEARINGS.items():
+        if bad in user_lower:
+            user_text = user_text.replace(bad, good)
+            user_lower = user_lower.replace(bad, good)
 
     # Check for interrupt
     if any(word in user_lower for word in INTERRUPT_WORDS):
@@ -127,6 +173,12 @@ def process_input(user_text: str, ui: JarvisUI):
         ui.set_standby()
         ui.write_log("🔇 Muted.")
         return
+
+    # Wake word check removed as per user request
+    # Optional stripping if user says it out of habit
+    user_text = user_text.replace("Tokyo", "").replace("tokyo", "").strip()
+    if not user_text:
+        return # Just said nothing
 
     ui.write_log(f"You: {user_text}")
     ui.set_processing()
@@ -151,6 +203,10 @@ def process_input(user_text: str, ui: JarvisUI):
     if temp_memory.has_pending_intent():
         memory_block["_pending_intent"] = temp_memory.pending_intent
         memory_block["_collected_params"] = str(temp_memory.get_parameters())
+    
+    # Context: Last Search (for "play that", "open that")
+    if temp_memory.get_last_search():
+        memory_block["last_search"] = str(temp_memory.get_last_search())
 
     # Call AI
     try:
@@ -160,6 +216,7 @@ def process_input(user_text: str, ui: JarvisUI):
         )
     except Exception as e:
         ui.write_log(f"❌ AI Error: {e}")
+        push_response(f"❌ AI Error: {e}")
         edge_speak("Sir, I encountered a system error.", ui)
         ui.set_listening()
         return
@@ -233,6 +290,7 @@ def process_input(user_text: str, ui: JarvisUI):
         # Chat / unknown
         if response:
             ui.write_log(f"AI: {response}")
+            push_response(response)
             edge_speak(response, ui)
 
     ui.set_listening()
@@ -262,9 +320,22 @@ async def ai_loop(ui: JarvisUI):
     ui.write_log(mic_msg)
 
     if mic_ok:
-        ui.write_log("🎙 Click the MIC button to enable voice input.")
+        ui.write_log("🎙 Microphone AUTO-ON.")
+        # Auto-enable mic on startup
+        mic_toggle_handler(True)
+        ui.set_mic_active(True)
     else:
         ui.write_log("⌨️ No mic detected — text-only mode.")
+
+    # Start Mobile Remote Server
+    try:
+        start_server(input_queue)
+        local_ip = get_local_ip()
+        mobile_url = f"http://{local_ip}:5000"
+        ui.write_log(f"🌐 Web UI: {mobile_url}")
+        ui.write_log(f"📱 Mobile: {mobile_url} (install as PWA)")
+    except Exception as e:
+        ui.write_log(f"Server Error: {e}")
 
     if success:
         edge_speak(
@@ -275,6 +346,20 @@ async def ai_loop(ui: JarvisUI):
         ui.write_log("⚠️ Running in limited mode. Check your API key.")
 
     ui.set_listening()
+
+    # Check for startup command
+    startup_cmd_path = BASE_DIR / "startup_command.txt"
+    if startup_cmd_path.exists():
+        try:
+            cmd_text = startup_cmd_path.read_text("utf-8").strip()
+            if cmd_text:
+                ui.write_log(f"🚀 Auto-Executing: {cmd_text[:50]}...")
+                # Delay slightly to ensure UI is ready
+                await asyncio.sleep(2.0)
+                input_queue.put(cmd_text)
+            startup_cmd_path.unlink()  # Delete after reading
+        except Exception as e:
+            print(f"Startup Command Error: {e}")
 
     # Main loop — poll shared queue
     while True:
@@ -300,6 +385,42 @@ def main():
     ╚══════════════════════════════════════════════╝
     """)
 
+    # ── Single Instance Check (Bulletproof) ─────────────────────────
+    # Method 1: Windows Mutex (kernel-level)
+    # CRITICAL: Must use use_last_error=True to prevent GetLastError from being
+    # cleared by intervening Python/ctypes internal calls.
+    _kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    mutex_name = "Global\\TokyoAI_SingleInstance_Mutex"
+    mutex_handle = _kernel32.CreateMutexW(None, True, mutex_name)
+    last_error = ctypes.get_last_error()  # Cached immediately, not cleared
+    
+    if last_error == 183:  # ERROR_ALREADY_EXISTS
+        print("⚠️ Tokyo AI is ALREADY RUNNING!")
+        print("   Close existing instances from Task Manager first.")
+        _kernel32.CloseHandle(mutex_handle)
+        sys.exit(1)
+    
+    if not mutex_handle:
+        print("⚠️ Failed to create mutex, continuing anyway...")
+    
+    # Method 2: Socket lock (backup)
+    SINGLE_INSTANCE_PORT = 65000
+    try:
+        instance_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        instance_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+        instance_socket.bind(('127.0.0.1', SINGLE_INSTANCE_PORT))
+        instance_socket.listen(1)
+    except socket.error:
+        print("⚠️ Tokyo AI is ALREADY RUNNING! (Port check)")
+        sys.exit(1)
+    # ──────────────────────────────────────────────────────────────
+
+    # ── Hide Console Window ───────────────────────────────────────
+    console_hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+    if console_hwnd:
+        ctypes.windll.user32.ShowWindow(console_hwnd, 0)  # SW_HIDE
+    # ──────────────────────────────────────────────────────────────
+
     face_path = FACE_IMAGE_PATH
     if not face_path.exists():
         alt = BASE_DIR / "face.png"
@@ -310,10 +431,81 @@ def main():
         face_path=str(face_path) if face_path.exists() else None,
         size=(760, 760)
     )
+    _ui_ref[0] = ui  # Set global ref for mic_toggle_handler
 
     # Wire callbacks
     ui.on_text_input = handle_text_input
     ui.on_mic_toggle = mic_toggle_handler
+
+    # ── Start UI Visible with mic active ───
+    _is_awake = [True]  # Track awake state
+    mic_toggle_handler(True)  # This now also updates UI via _ui_ref
+    ui.write_log("🫡 At your service, Sir.")
+
+    def _on_hide():
+        """Called when the window is hidden (X button). Resets state so clap/wake can re-trigger."""
+        _is_awake[0] = False
+        ui.hide_window()
+        # Resume listeners immediately so they can detect claps/wake words
+        clap_listener.resume()
+        wake_listener.resume()
+        print("💤 Window hidden — clap & wake word listeners active")
+
+    def _wake_up():
+        """Show UI and activate (must run on main thread). INSTANT response."""
+        if _is_awake[0]:
+            return  # Already awake — silently ignore
+        _is_awake[0] = True
+        
+        # INSTANT: Show window + enable mic immediately
+        ui.show_window()
+        ui.root.attributes("-topmost", True)
+        ui.root.after(500, lambda: ui.root.attributes("-topmost", False))
+        mic_toggle_handler(True)
+        ui.write_log("🫡 At your service, Sir.")
+        
+        # Background: TTS greeting + listener management (non-blocking)
+        def _greet():
+            clap_listener.pause()
+            wake_listener.pause()
+            edge_speak("At your service, Sir.", ui)
+            time.sleep(1.5)
+            clap_listener.resume()
+            wake_listener.resume()
+        threading.Thread(target=_greet, daemon=True).start()
+
+    def on_wake_trigger():
+        """Called by either double-clap or wake phrase (from background thread)."""
+        try:
+            ui.root.after(0, _wake_up)
+        except:
+            pass
+
+    # Start AudioHub (Shared Microphone Stream)
+    from core.audio_hub import audio_hub
+    audio_hub.start()
+
+    # Start Double-Clap Listener (optimized spectral + transient detection)
+    clap_listener = ClapListener(
+        on_clap_callback=on_wake_trigger, 
+        threshold=12, 
+        double_clap_min=0.12,
+        double_clap_max=0.55,
+        cooldown=2.0
+    )
+    clap_listener.start()
+
+    # Start Wake Word Listener ("daddy's home", "jarvis", etc.)
+    from core.wake_word import WakeWordListener
+    wake_listener = WakeWordListener(
+        on_wake_callback=on_wake_trigger,
+        model_path=str(VOSK_MODEL_PATH)
+    )
+    wake_listener.start()
+
+    # Wire the hide callback so _is_awake resets when window is closed
+    ui.root.protocol("WM_DELETE_WINDOW", _on_hide)
+    # ──────────────────────────────────────────────────────────────
 
     # Start AI loop in background
     def runner():

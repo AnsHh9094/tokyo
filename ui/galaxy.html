@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS AI Galaxy Interface</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+            /* Let clicks pass through to canvas interactions */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* Top Bar */
+        .top-bar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding-top: 10px;
+        }
+
+        .status-badge {
+            background: rgba(0, 20, 40, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            padding: 8px 20px;
+            border-radius: 20px;
+            color: #00ffff;
+            font-weight: bold;
+            letter-spacing: 2px;
+            font-size: 14px;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+            transition: all 0.3s ease;
+        }
+
+        /* Center Area (Empty for Galaxy view) */
+
+        /* Bottom Area */
+        .bottom-area {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 20px;
+            pointer-events: auto;
+            /* Enable interaction */
+        }
+
+        /* Chat Log */
+        #chat-log {
+            width: 90%;
+            max-width: 600px;
+            height: 150px;
+            /* Short log */
+            background: rgba(0, 10, 20, 0.7);
+            border: 1px solid rgba(0, 100, 200, 0.3);
+            border-radius: 12px;
+            padding: 15px;
+            overflow-y: auto;
+            color: #e0faff;
+            font-family: 'Consolas', monospace;
+            font-size: 14px;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            scrollbar-width: thin;
+            scrollbar-color: #005588 transparent;
+        }
+
+        #chat-log::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        #chat-log::-webkit-scrollbar-thumb {
+            background-color: #005588;
+            border-radius: 3px;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            line-height: 1.4;
+            opacity: 0;
+            animation: fadeIn 0.3s forwards;
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+            }
+        }
+
+        .user-msg {
+            color: #88ccff;
+        }
+
+        .ai-msg {
+            color: #00ffaa;
+        }
+
+        .sys-msg {
+            color: #ffaa00;
+            font-size: 12px;
+            font-style: italic;
+        }
+
+        /* Input Controls */
+        .input-controls {
+            display: flex;
+            gap: 10px;
+            width: 90%;
+            max-width: 600px;
+        }
+
+        #mic-btn {
+            background: rgba(20, 0, 0, 0.8);
+            color: #ff4444;
+            border: 1px solid #550000;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 80px;
+        }
+
+        #mic-btn.active {
+            background: rgba(0, 30, 10, 0.8);
+            color: #00ff88;
+            border-color: #005522;
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+        }
+
+        #text-input {
+            flex-grow: 1;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(0, 150, 255, 0.3);
+            border-radius: 8px;
+            color: #fff;
+            padding: 10px 15px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        #text-input:focus {
+            border-color: #00ffff;
+            box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+        }
+
+        #send-btn {
+            background: rgba(0, 40, 80, 0.8);
+            color: #00ffff;
+            border: 1px solid rgba(0, 100, 200, 0.5);
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        #send-btn:hover {
+            background: rgba(0, 60, 120, 0.9);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div id="ui-overlay">
+        <div class="top-bar">
+            <div id="status-badge" class="status-badge">● STANDBY</div>
+        </div>
+
+        <div class="bottom-area">
+            <div id="chat-log"></div>
+
+            <div class="input-controls">
+                <button id="mic-btn" onclick="toggleMic()">⏻ OFF</button>
+                <input type="text" id="text-input" placeholder="Type a command..." onkeydown="checkEnter(event)">
+                <button id="send-btn" onclick="sendMessage()">SEND</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OGL Library via CDN (Use unpkg for stability) -->
+    <script src="https://unpkg.com/ogl"></script>
+
+    <script>
+        // ── Galaxy Shader Code ──────────────────────────────────────────
+        const vertexShader = `
+            attribute vec2 uv;
+            attribute vec2 position;
+            varying vec2 vUv;
+            void main() {
+                vUv = uv;
+                gl_Position = vec4(position, 0, 1);
+            }
+        `;
+
+        const fragmentShader = `
+            precision highp float;
+            uniform float uTime;
+            uniform vec3 uResolution;
+            uniform vec2 uMouse;
+            uniform float uSpeed;
+            uniform float uGlowIntensity;
+            
+            // Galaxy Params
+            uniform float uStarSpeed;     // 0.5
+            uniform float uDensity;       // 1.0
+            uniform float uHueShift;      // 140.0
+            
+            varying vec2 vUv;
+
+            #define NUM_LAYER 4.0
+            #define STAR_COLOR_CUTOFF 0.2
+            #define MAT45 mat2(0.7071, -0.7071, 0.7071, 0.7071)
+            #define PERIOD 3.0
+
+            float Hash21(vec2 p) {
+                p = fract(p * vec2(123.34, 456.21));
+                p += dot(p, p + 45.32);
+                return fract(p.x * p.y);
+            }
+
+            float tri(float x) { return abs(fract(x) * 2.0 - 1.0); }
+            
+            float tris(float x) {
+                float t = fract(x);
+                return 1.0 - smoothstep(0.0, 1.0, abs(2.0 * t - 1.0));
+            }
+
+            float trisn(float x) {
+                float t = fract(x);
+                return 2.0 * (1.0 - smoothstep(0.0, 1.0, abs(2.0 * t - 1.0))) - 1.0;
+            }
+
+            vec3 hsv2rgb(vec3 c) {
+                vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+                vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
+                return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);
+            }
+
+            float Star(vec2 uv, float flare) {
+                float d = length(uv);
+                float m = (0.05 * uGlowIntensity) / d;
+                float rays = smoothstep(0.0, 1.0, 1.0 - abs(uv.x * uv.y * 1000.0));
+                m += rays * flare * uGlowIntensity;
+                uv *= MAT45;
+                rays = smoothstep(0.0, 1.0, 1.0 - abs(uv.x * uv.y * 1000.0));
+                m += rays * 0.3 * flare * uGlowIntensity;
+                m *= smoothstep(1.0, 0.2, d);
+                return m;
+            }
+
+            vec3 StarLayer(vec2 uv) {
+                vec3 col = vec3(0.0);
+                vec2 gv = fract(uv) - 0.5; 
+                vec2 id = floor(uv);
+
+                for (int y = -1; y <= 1; y++) {
+                    for (int x = -1; x <= 1; x++) {
+                        vec2 offset = vec2(float(x), float(y));
+                        vec2 si = id + vec2(float(x), float(y));
+                        float seed = Hash21(si);
+                        float size = fract(seed * 345.32);
+                        float glossLocal = tri(uStarSpeed / (PERIOD * seed + 1.0));
+                        float flareSize = smoothstep(0.9, 1.0, size) * glossLocal;
+
+                        float red = smoothstep(STAR_COLOR_CUTOFF, 1.0, Hash21(si + 1.0)) + STAR_COLOR_CUTOFF;
+                        float blu = smoothstep(STAR_COLOR_CUTOFF, 1.0, Hash21(si + 3.0)) + STAR_COLOR_CUTOFF;
+                        float grn = min(red, blu) * seed;
+                        vec3 base = vec3(red, grn, blu);
+                        
+                        float hue = atan(base.g - base.r, base.b - base.r) / (2.0 * 3.14159) + 0.5;
+                        hue = fract(hue + uHueShift / 360.0);
+                        // Simplified saturation logic for shader compability
+                        float sat = 0.6; 
+                        float val = max(max(base.r, base.g), base.b);
+                        base = hsv2rgb(vec3(hue, sat, val));
+
+                        vec2 pad = vec2(tris(seed * 34.0 + uTime * uSpeed / 10.0), tris(seed * 38.0 + uTime * uSpeed / 30.0)) - 0.5;
+
+                        float star = Star(gv - offset - pad, flareSize);
+                        
+                        // Twinkle
+                        float twinkle = trisn(uTime * uSpeed + seed * 6.2831) * 0.5 + 1.0;
+                        twinkle = mix(1.0, twinkle, 0.3); // uTwinkleIntensity = 0.3
+                        star *= twinkle;
+                        
+                        col += star * size * base;
+                    }
+                }
+                return col;
+            }
+
+            void main() {
+                vec2 uv = (vUv * uResolution.xy - 0.5 * uResolution.xy) / uResolution.y;
+                
+                // Simple mouse offset
+                vec2 mouseNorm = uMouse - vec2(0.5);
+                uv += mouseNorm * 0.1;
+
+                // Rotation
+                float autoRotAngle = uTime * 0.1;
+                mat2 autoRot = mat2(cos(autoRotAngle), -sin(autoRotAngle), sin(autoRotAngle), cos(autoRotAngle));
+                uv = autoRot * uv;
+
+                vec3 col = vec3(0.0);
+
+                for (float i = 0.0; i < 1.0; i += 1.0 / NUM_LAYER) {
+                    float depth = fract(i + uStarSpeed * uSpeed);
+                    float scale = mix(20.0 * uDensity, 0.5 * uDensity, depth);
+                    float fade = depth * smoothstep(1.0, 0.9, depth);
+                    col += StarLayer(uv * scale + i * 453.32) * fade;
+                }
+
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        // ── WebGL Initialization using OGL ──────────────────────────────
+        const { Renderer, Program, Mesh, Color, Triangle } = ogl;
+
+        const container = document.getElementById('canvas-container');
+        const renderer = new Renderer({ alpha: false });
+        const gl = renderer.gl;
+        container.appendChild(gl.canvas);
+
+        let program;
+
+        function resize() {
+            renderer.setSize(container.offsetWidth, container.offsetHeight);
+            if (program) {
+                program.uniforms.uResolution.value.set(gl.canvas.width, gl.canvas.height, gl.canvas.width / gl.canvas.height);
+            }
+        }
+        window.addEventListener('resize', resize, false);
+
+        // Initial setup
+        {
+            const geometry = new Triangle(gl);
+
+            program = new Program(gl, {
+                vertex: vertexShader,
+                fragment: fragmentShader,
+                uniforms: {
+                    uTime: { value: 0 },
+                    uResolution: { value: new Color(gl.canvas.width, gl.canvas.height, gl.canvas.width / gl.canvas.height) },
+                    uMouse: { value: new Float32Array([0.5, 0.5]) },
+                    uSpeed: { value: 1.0 },
+                    uGlowIntensity: { value: 0.5 }, // Increased baseline glow
+                    uStarSpeed: { value: 0.5 },
+                    uDensity: { value: 1.5 },
+                    uHueShift: { value: 240.0 }, // Blue/Purple shift
+                }
+            });
+
+            const mesh = new Mesh(gl, { geometry, program });
+
+            // Mouse interaction
+            container.addEventListener('mousemove', (e) => {
+                const x = e.clientX / container.offsetWidth;
+                const y = 1.0 - e.clientY / container.offsetHeight;
+                program.uniforms.uMouse.value[0] = x;
+                program.uniforms.uMouse.value[1] = y;
+            });
+
+            requestAnimationFrame(update);
+            function update(t) {
+                requestAnimationFrame(update);
+                program.uniforms.uTime.value = t * 0.001;
+                program.uniforms.uStarSpeed.value = (t * 0.001 * 0.5) / 10.0;
+                renderer.render({ scene: mesh });
+            }
+        }
+        resize();
+
+        // ── UI Logic ────────────────────────────────────────────────────
+
+        let micActive = false;
+
+        function addLog(text, type = 'ai-msg') {
+            const log = document.getElementById('chat-log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = text;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function toggleMic() {
+            // Call Python to toggle mic
+            if (window.pywebview) {
+                window.pywebview.api.toggle_mic();
+            } else {
+                console.log("simulating mic toggle");
+                setMicState(!micActive); // fallback test
+            }
+        }
+
+        function setMicState(active) {
+            micActive = active;
+            const btn = document.getElementById('mic-btn');
+            if (active) {
+                btn.textContent = "◉ LIVE";
+                btn.classList.add('active');
+            } else {
+                btn.textContent = "⏻ OFF";
+                btn.classList.remove('active');
+            }
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('text-input');
+            const text = input.value.trim();
+            if (text) {
+                addLog(`You: ${text}`, 'user-msg');
+                input.value = '';
+                if (window.pywebview) {
+                    window.pywebview.api.send_text(text);
+                }
+            }
+        }
+
+        function checkEnter(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        function updateStatus(text, color) {
+            const badge = document.getElementById('status-badge');
+            badge.textContent = text;
+            badge.style.color = color;
+            badge.style.borderColor = color;
+
+            // Update Shader based on state
+            if (text.includes("SPEAKING")) {
+                program.uniforms.uGlowIntensity.value = 1.5; // Bright glow
+                program.uniforms.uSpeed.value = 2.0;         // Fast motion
+                program.uniforms.uHueShift.value = 100.0;    // Green shift
+            } else if (text.includes("LISTENING")) {
+                program.uniforms.uGlowIntensity.value = 0.8;
+                program.uniforms.uSpeed.value = 0.5;
+                program.uniforms.uHueShift.value = 40.0;     // Amber shift
+            } else if (text.includes("PROCESSING")) {
+                program.uniforms.uGlowIntensity.value = 1.2;
+                program.uniforms.uSpeed.value = 3.0;         // Very fast
+                program.uniforms.uHueShift.value = 300.0;    // Pink shift
+            } else {
+                program.uniforms.uGlowIntensity.value = 0.5; // Normal
+                program.uniforms.uSpeed.value = 1.0;
+                program.uniforms.uHueShift.value = 220.0;    // Blue
+            }
+        }
+
+        // ── Expose to Python ────────────────────────────────────────────
+        window.updateStatus = updateStatus;
+        window.addLog = addLog;
+        window.setMicState = setMicState;
+
+    </script>
+</body>
+
+</html>

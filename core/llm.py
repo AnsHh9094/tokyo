@@ -215,6 +215,58 @@ Known user memory:
         }
 
 
+# ── Content Generation ────────────────────────────────────────
+
+def generate_text(prompt: str, system_prompt: str = None) -> str | None:
+    """
+    Generate raw text from LLM (no JSON parsing).
+    Useful for writing posts, essays, etc.
+    """
+    api_key = get_openrouter_key()
+    if not api_key:
+        print("❌ OPENROUTER API KEY NOT FOUND")
+        return None
+
+    if not system_prompt:
+        system_prompt = "You are a professional content creator. Write high-quality, engaging content."
+
+    payload = {
+        "model": MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 1000
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "http://localhost",
+        "X-Title": "Jarvis-Assistant"
+    }
+
+    try:
+        response = requests.post(
+            OPENROUTER_URL,
+            headers=headers,
+            json=payload,
+            timeout=40
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            return data["choices"][0]["message"]["content"]
+        else:
+            print(f"❌ API Error: {response.text}")
+            return None
+
+    except Exception as e:
+        print(f"❌ Text Generation Error: {e}")
+        return None
+
+
 # ── Connection Test ───────────────────────────────────────────
 
 def test_connection() -> tuple[bool, str]:

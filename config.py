@@ -26,15 +26,15 @@ DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")  # or "deepseek-re
 SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
 
 # Assistant Configuration
-ASSISTANT_NAME = os.getenv("ASSISTANT_NAME", "Jarvis")
-WAKE_WORD = os.getenv("WAKE_WORD", "hey jarvis").lower()
+ASSISTANT_NAME = os.getenv("ASSISTANT_NAME", "Tokyo")
+WAKE_WORD = os.getenv("WAKE_WORD", "tokyo").lower()
 
 # Speech Configuration
 VOSK_MODEL_PATH = BASE_DIR / "vosk-model-small-en-us-0.15"
-TTS_VOICE = os.getenv("TTS_VOICE", "en-US-AndrewMultilingualNeural")
-TTS_RATE = os.getenv("TTS_RATE", "+0%")
+TTS_VOICE = os.getenv("TTS_VOICE", "en-GB-RyanNeural") # JARVIS-like British Male Voice
+TTS_RATE = os.getenv("TTS_RATE", "-5%")    # Calm, measured pace (like JARVIS)
 TTS_VOLUME = os.getenv("TTS_VOLUME", "+0%")
-TTS_PITCH = os.getenv("TTS_PITCH", "+0Hz")
+TTS_PITCH = os.getenv("TTS_PITCH", "-3Hz") # Deep, refined tone
 
 # Hotkey Configuration
 HOTKEY = os.getenv("HOTKEY", "ctrl+shift+j")

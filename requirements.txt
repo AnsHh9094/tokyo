@@ -7,7 +7,9 @@ openai>=1.12.0              # DeepSeek API (OpenAI-compatible)
 # Speech Recognition (Offline)
 sounddevice>=0.4.6          # Audio input/output
 soundfile>=0.12.1           # Audio file handling
-vosk>=0.3.45                # Offline speech recognition
+soundfile>=0.12.1           # Audio file handling
+SpeechRecognition>=3.10.0   # Google Speech API (Online)
+vosk>=0.3.45                # Offline speech recognition (Backup)
 
 # Text-to-Speech
 edge-tts>=6.1.9             # Microsoft Edge TTS (free, high quality)
@@ -31,3 +33,7 @@ python-dotenv>=1.0.1        # Environment config
 # Optional: Advanced features
 # chromadb                  # For semantic memory search
 # sentence-transformers     # For embeddings
+
+# Mobile Remote
+flask>=3.0.0
+flask-cors>=4.0.0

@@ -10,7 +10,24 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.tts import edge_speak
+from core.browser import open_url
 
+
+import webbrowser
+
+# Apps to force-open in browser for efficiency
+URL_APPS = {
+    "instagram": "https://www.instagram.com",
+    "facebook": "https://www.facebook.com",
+    "twitter": "https://twitter.com",
+    "x": "https://twitter.com",
+    "reddit": "https://www.reddit.com",
+    "linkedin": "https://www.linkedin.com",
+    "github": "https://github.com",
+    "chatgpt": "https://chat.openai.com",
+    "youtube": "https://www.youtube.com",
+    "gmail": "https://mail.google.com",
+}
 
 # Common app aliases for better recognition
 APP_ALIASES = {
@@ -59,13 +76,7 @@ APP_ALIASES = {
 
 def open_app(parameters: dict, response: str = None, player=None, session_memory=None) -> bool:
     """
-    Open an application using Windows search.
-
-    Args:
-        parameters: dict with 'app_name' key
-        response: AI response text to speak
-        player: JarvisUI instance
-        session_memory: TemporaryMemory instance
+    Open an application (or web app) efficiently.
     """
     app_name = (parameters or {}).get("app_name", "").strip()
 
@@ -81,6 +92,19 @@ def open_app(parameters: dict, response: str = None, player=None, session_memory
 
     # Check for aliases
     app_name_lower = app_name.lower()
+    
+    # 1. Check for Web Apps
+    if app_name_lower in URL_APPS:
+        url = URL_APPS[app_name_lower]
+        if response:
+            edge_speak(response, player)
+        
+        open_url(url)  # Use core.browser logic to handle profile
+        if player:
+            player.write_log(f"✅ Opened {app_name} in browser.")
+        return True
+
+    # 2. Check for Desktop Apps
     resolved_name = APP_ALIASES.get(app_name_lower, app_name)
 
     if response:
