@@ -13,9 +13,7 @@ import sys
 import queue
 
 sys.path.insert(0, str(Path(__file__).parent))
-from config import CONFIG_DIR, ASSETS_DIR, ASSISTANT_NAME
-
-API_FILE = CONFIG_DIR / "api_keys.json"
+from config import CONFIG_DIR, ASSETS_DIR, ASSISTANT_NAME, OPENROUTER_API_KEY
 
 # ── Color Palette ────────────────────────────────────────────
 COLORS = {
@@ -100,7 +98,7 @@ class JarvisUI:
         self.on_mic_toggle = None
         self.state = "standby"
         self._msg_queue = queue.Queue()
-        self.api_keys_ready = API_FILE.exists()
+        self.api_keys_ready = bool(OPENROUTER_API_KEY)
 
         # ══════════════════════════════════════════════════════
         #  LAYOUT: Canvas (top) → Status → Chat → Input bar
