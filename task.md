@@ -30,6 +30,11 @@ Create a comprehensive AI assistant powered by DeepSeek AI that can control the 
 ### Advanced Features
 - [ ] Custom command training/learning
 - [ ] Memory system (conversation history)
+- [x] Switch to ElevenLabs TTS
+    - [x] Get API key from user <!-- id: 4 -->
+    - [x] Implement dual-voice system (Hindi/English) <!-- id: 5 -->
+    - [x] Add auto-fallback to Edge TTS <!-- id: 6 -->
+    - [x] Remove dependency on pre-recorded clips <!-- id: 7 -->
 - [/] Context awareness
     - [x] Basic song reference resolution ("play it")
 - [ ] Plugin/extension system

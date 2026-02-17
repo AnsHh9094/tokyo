@@ -19,17 +19,7 @@ except ImportError:
 
 def _get_serpapi_key() -> str:
     """Get SerpAPI key from config."""
-    key = SERPAPI_KEY
-    if not key:
-        config_path = Path(__file__).parent.parent / "config" / "api_keys.json"
-        if config_path.exists():
-            try:
-                with open(config_path, "r") as f:
-                    keys = json.load(f)
-                    key = keys.get("serpapi_key", "")
-            except Exception:
-                pass
-    return key
+    return SERPAPI_KEY
 
 
 def web_search(parameters: dict, response: str = None, player=None, session_memory=None) -> bool:

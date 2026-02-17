@@ -1,7 +1,7 @@
 """
-Jarvis AI Assistant — Main Entry Point
+Tokyo AI Assistant — Main Entry Point
 Orchestrates voice + text input, AI processing, and action execution.
-Based on Mark-X.1 by FatihMakes, enhanced with OpenRouter AI + 15 intents.
+Powered by Google Gemini AI + 21 intents.
 """
 import asyncio
 import threading
@@ -18,6 +18,7 @@ from core.llm import get_llm_output, test_connection
 from core.tts import edge_speak, stop_speaking
 from core.server import start_server, push_response, push_status, push_log
 from core.clap import ClapListener
+from core.voice_pack import play_mic_sound, play_process_sound
 import socket
 import ctypes
 
@@ -44,7 +45,7 @@ from actions.system_control import (
     read_notes_action, shutdown_action
 )
 from actions.media_control import media_control, spotify_play, youtube_play
-from actions.linkedin import create_linkedin_post
+from actions.content import create_content_action
 
 from memory.memory_manager import load_memory, update_memory, minimal_memory_for_prompt
 from memory.temporary_memory import TemporaryMemory
@@ -78,7 +79,7 @@ ACTION_MAP = {
     "media_control": media_control,
     "spotify_play": spotify_play,
     "youtube_play": youtube_play,
-    "create_content": create_linkedin_post,
+    "create_content": create_content_action,
 }
 
 
@@ -118,6 +119,8 @@ def mic_toggle_handler(active: bool):
         voice_active.set()
         start_voice_thread()
         print("🎙 Microphone ON")
+        try: play_mic_sound()
+        except: pass
     else:
         voice_active.clear()
         stop_listening()
@@ -180,7 +183,10 @@ def process_input(user_text: str, ui: JarvisUI):
     if not user_text:
         return # Just said nothing
 
-    ui.write_log(f"You: {user_text}")
+    # Only log user text if it came from voice/web (desktop _send_text already logs it)
+    if not hasattr(ui, '_last_logged_text') or ui._last_logged_text != user_text:
+        ui.write_log(f"You: {user_text}")
+    ui._last_logged_text = None  # Reset after check
     ui.set_processing()
 
     # Handle follow-ups
@@ -311,29 +317,30 @@ async def ai_loop(ui: JarvisUI):
             await asyncio.sleep(0.5)
 
     # Test connection
-    ui.write_log("🔗 Connecting to OpenRouter AI...")
+    # ui.write_log("🔗 Connecting to OpenRouter AI...")
     success, msg = test_connection()
-    ui.write_log(msg)
+    # ui.write_log(msg)
 
     # Check microphone
     mic_ok, mic_msg = check_microphone()
-    ui.write_log(mic_msg)
+    # ui.write_log(mic_msg)
 
     if mic_ok:
-        ui.write_log("🎙 Microphone AUTO-ON.")
+        # ui.write_log("🎙 Microphone AUTO-ON.")
         # Auto-enable mic on startup
         mic_toggle_handler(True)
         ui.set_mic_active(True)
     else:
-        ui.write_log("⌨️ No mic detected — text-only mode.")
+        # ui.write_log("⌨️ No mic detected — text-only mode.")
+        pass
 
     # Start Mobile Remote Server
     try:
         start_server(input_queue)
         local_ip = get_local_ip()
         mobile_url = f"http://{local_ip}:5000"
-        ui.write_log(f"🌐 Web UI: {mobile_url}")
-        ui.write_log(f"📱 Mobile: {mobile_url} (install as PWA)")
+        # ui.write_log(f"🌐 Web UI: {mobile_url}")
+        # ui.write_log(f"📱 Mobile: {mobile_url} (install as PWA)")
     except Exception as e:
         ui.write_log(f"Server Error: {e}")
 
@@ -439,6 +446,7 @@ def main():
 
     # ── Start UI Visible with mic active ───
     _is_awake = [True]  # Track awake state
+    _greet_lock = threading.Lock()  # Prevent overlapping greets
     mic_toggle_handler(True)  # This now also updates UI via _ui_ref
     ui.write_log("🫡 At your service, Sir.")
 
@@ -447,6 +455,7 @@ def main():
         _is_awake[0] = False
         ui.hide_window()
         # Resume listeners immediately so they can detect claps/wake words
+        # (this also cancels any stuck pause from _greet)
         clap_listener.resume()
         wake_listener.resume()
         print("💤 Window hidden — clap & wake word listeners active")
@@ -466,12 +475,18 @@ def main():
         
         # Background: TTS greeting + listener management (non-blocking)
         def _greet():
-            clap_listener.pause()
-            wake_listener.pause()
-            edge_speak("At your service, Sir.", ui)
-            time.sleep(1.5)
-            clap_listener.resume()
-            wake_listener.resume()
+            with _greet_lock:
+                # Check if still awake before pausing (window may have been hidden already)
+                if not _is_awake[0]:
+                    return
+                clap_listener.pause()
+                wake_listener.pause()
+                edge_speak("At your service, Sir.", ui)
+                time.sleep(1.0)
+                # Only resume if still awake — _on_hide already resumed them if hidden
+                if _is_awake[0]:
+                    clap_listener.resume()
+                    wake_listener.resume()
         threading.Thread(target=_greet, daemon=True).start()
 
     def on_wake_trigger():

@@ -413,6 +413,7 @@ class JarvisUI:
         text = self.text_entry.get().strip()
         if text and self.on_text_input:
             self.write_log(f"You: {text}")
+            self._last_logged_text = text  # Flag to prevent duplicate logging
             self.on_text_input(text)
             self.text_entry.delete(0, tk.END)
 

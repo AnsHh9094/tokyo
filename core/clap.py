@@ -233,72 +233,75 @@ class ClapListener:
 
     # ── Main loop ────────────────────────────────────────────
     def _listen_loop(self):
-        """Main audio loop — receives int16 chunks from AudioHub."""
-        audio_queue = queue.Queue(maxsize=50)
+        """Main audio loop with auto-recovery — never dies permanently."""
+        from core.audio_hub import audio_hub
 
-        try:
-            from core.audio_hub import audio_hub
-            audio_hub.register(audio_queue)
+        while not self._stop_event.is_set():
+            audio_queue = queue.Queue(maxsize=50)
+            try:
+                audio_hub.register(audio_queue)
 
-            while not self._stop_event.is_set():
-                # ── Paused: drain and skip ──
-                if self.paused or not self.running:
-                    time.sleep(0.1)
-                    while not audio_queue.empty():
-                        try: audio_queue.get_nowait()
-                        except: break
-                    continue
+                while not self._stop_event.is_set():
+                    # ── Paused: drain and skip ──
+                    if self.paused or not self.running:
+                        time.sleep(0.1)
+                        while not audio_queue.empty():
+                            try: audio_queue.get_nowait()
+                            except: break
+                        continue
 
-                # ── Get next chunk ──
-                try:
-                    raw = audio_queue.get(timeout=1.0)
-                except queue.Empty:
-                    continue
+                    # ── Get next chunk ──
+                    try:
+                        raw = audio_queue.get(timeout=1.0)
+                    except queue.Empty:
+                        continue
 
-                now = time.time()
+                    now = time.time()
 
-                # ── Debounce ──
-                if now - self._last_peak_time < self._debounce:
-                    # Update energy but skip detection
-                    self._prev_energy = self._quick_energy(raw)
-                    continue   # BUG FIX: was 'return' which killed the loop!
+                    # ── Debounce ──
+                    if now - self._last_peak_time < self._debounce:
+                        self._prev_energy = self._quick_energy(raw)
+                        continue
 
-                # ── Detect clap ──
-                if _np is not None:
-                    # Numpy path: convert int16 → float32
-                    samples = _np.frombuffer(raw, dtype=_np.int16).astype(_np.float32) / 32768.0
-                    is_clap, energy = self._is_clap_numpy(samples)
-                else:
-                    # Pure Python path: process int16 directly
-                    is_clap, energy = self._is_clap_int16(raw)
+                    # ── Detect clap ──
+                    if _np is not None:
+                        samples = _np.frombuffer(raw, dtype=_np.int16).astype(_np.float32) / 32768.0
+                        is_clap, energy = self._is_clap_numpy(samples)
+                    else:
+                        is_clap, energy = self._is_clap_int16(raw)
 
-                if not is_clap:
-                    continue
+                    if not is_clap:
+                        continue
 
-                self._last_peak_time = now
+                    self._last_peak_time = now
 
-                # ── Cooldown ──
-                if now - self._last_trigger_time < self.cooldown:
-                    continue
+                    # ── Cooldown ──
+                    if now - self._last_trigger_time < self.cooldown:
+                        continue
 
-                # ── Double-clap timing ──
-                gap = now - self._first_clap_time
+                    # ── Double-clap timing ──
+                    gap = now - self._first_clap_time
 
-                if self._first_clap_time > 0 and self.double_clap_min < gap < self.double_clap_max:
-                    self._first_clap_time = 0
-                    self._last_trigger_time = now
-                    print("👏👏 DOUBLE CLAP DETECTED!")
-                    if self.on_clap:
-                        self.on_clap()
-                elif gap >= self.double_clap_max or self._first_clap_time == 0:
-                    self._first_clap_time = now
+                    if self._first_clap_time > 0 and self.double_clap_min < gap < self.double_clap_max:
+                        self._first_clap_time = 0
+                        self._last_trigger_time = now
+                        print("👏👏 DOUBLE CLAP DETECTED!")
+                        if self.on_clap:
+                            self.on_clap()
+                    elif gap >= self.double_clap_max or self._first_clap_time == 0:
+                        self._first_clap_time = now
 
-        except Exception as e:
-            print(f"❌ Clap Listener Error: {e}")
-            self.running = False
-        finally:
-            try: audio_hub.unregister(audio_queue)
-            except: pass
+            except Exception as e:
+                print(f"❌ Clap Listener Error: {e}, auto-restarting in 2s...")
+            finally:
+                try: audio_hub.unregister(audio_queue)
+                except: pass
+
+            # Back off before retry (unless we're stopping)
+            if not self._stop_event.is_set():
+                time.sleep(2.0)
+
+        self.running = False
 
     def _quick_energy(self, raw_bytes):
         """Fast RMS energy from int16 bytes (for debounce updates)."""

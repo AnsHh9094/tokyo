@@ -1,6 +1,7 @@
 """
 LinkedIn Automation Action
-Generates content using LLM, opens LinkedIn post modal, and pastes content.
+Generates content, opens LinkedIn post modal, and pastes content.
+Uses LinkedIn's ?shareActive=true which auto-opens and auto-focuses the modal.
 """
 import sys
 import pyperclip
@@ -22,7 +23,7 @@ LINKEDIN_URL = "https://www.linkedin.com/feed/?shareActive=true"
 def create_linkedin_post(parameters: dict, response: str = None, player=None, session_memory=None):
     """
     Drafts a LinkedIn post, opens the post modal, and pastes content.
-    The shareActive=true modal auto-focuses the text area — no clicking needed.
+    LinkedIn's shareActive=true auto-opens the modal with text area focused.
     """
     topic = parameters.get("topic")
     content = parameters.get("content")
@@ -34,7 +35,7 @@ def create_linkedin_post(parameters: dict, response: str = None, player=None, se
         edge_speak("Sir, what should the post be about?", player)
         return
 
-    # 1. Notify
+    # ── Step 1: Notify ──────────────────────────────────────
     if content:
         msg = "Preparing to post on LinkedIn..."
     else:
@@ -43,13 +44,14 @@ def create_linkedin_post(parameters: dict, response: str = None, player=None, se
         player.write_log(f"📝 {msg}")
     edge_speak(msg, player)
 
-    # 2. Generate Content
+    # ── Step 2: Generate Content ────────────────────────────
     post_content = content
     if not post_content:
         system_prompt = (
             "You are a LinkedIn influencer and thought leader. "
             "Write a professional, engaging, and viral LinkedIn post. "
             "Use short paragraphs, emojis, and hashtags. "
+            "Keep it under 200 words. "
             "Do not include placeholders like '[Your Name]'. "
             "The post should be ready to copy-paste."
         )
@@ -59,69 +61,79 @@ def create_linkedin_post(parameters: dict, response: str = None, player=None, se
         edge_speak("Sir, I failed to generate the post content.", player)
         return
 
-    # 3. Copy to clipboard
+    # ── Step 3: Generate Image if topic suggests it ─────────
+    image_path = None
+    needs_image = any(
+        w in (topic or "").lower() 
+        for w in ["image", "picture", "photo", "graphic", "visual", "banner"]
+    )
+    if needs_image and topic:
+        if player:
+            player.write_log("🎨 Generating image for the post...")
+        image_path = generate_image(topic)
+        if image_path and player:
+            player.write_log(f"✅ Image ready: {Path(image_path).name}")
+
+    # ── Step 4: Copy content to clipboard ───────────────────
     pyperclip.copy(post_content)
     if player:
-        player.write_log("📋 Post copied to clipboard.")
+        player.write_log(f"📋 Post copied ({len(post_content)} chars)")
 
-    # 4. FULLY HIDE Jarvis window using Windows API (iconify may not be enough)
-    if player:
-        player.write_log("🔽 Hiding Jarvis window...")
+    # ── Step 5: Hide Jarvis window ──────────────────────────
     try:
         if player and hasattr(player, 'root'):
-            player.root.withdraw()  # Completely hide (not just minimize)
-            time.sleep(0.5)
+            player.root.withdraw()
+            time.sleep(0.3)
     except Exception:
         pass
 
-    # 5. Open LinkedIn — browser gets full focus since Jarvis is hidden
+    # ── Step 6: Open LinkedIn with auto-focused post modal ──
+    # The ?shareActive=true parameter opens the post modal AND
+    # auto-focuses the text area — no clicking needed.
     webbrowser.open(LINKEDIN_URL)
     if player:
-        player.write_log("⏳ Waiting 20s for LinkedIn modal to load...")
+        player.write_log("⏳ Opening LinkedIn...")
 
-    # 6. Wait for LinkedIn to fully load (it's heavy)
-    time.sleep(20)
+    # Wait for page + modal to fully load
+    time.sleep(12)
 
-    # 7. Paste — Click to ensure focus, then paste
+    # ── Step 7: Paste content ───────────────────────────────
+    # The modal text area is already focused by LinkedIn.
+    # Just re-copy (safety) and paste.
     try:
-        # Re-copy to clipboard (safety)
         pyperclip.copy(post_content)
         time.sleep(0.5)
-
-        # Click at 30% height (safe center area for the modal text box)
-        screen_w, screen_h = pyautogui.size()
-        click_x = int(screen_w * 0.5)
-        click_y = int(screen_h * 0.30)
         
-        if player:
-            player.write_log(f"🖱️ Clicking at ({click_x}, {click_y}) to focus...")
-            
-        pyautogui.click(click_x, click_y)
-        time.sleep(0.8)
-
-        # Also press Tab once just in case
-        pyautogui.press('tab')
-        time.sleep(0.5)
-
-        # Paste
+        # Paste with Ctrl+V — text area is already focused
         pyautogui.hotkey('ctrl', 'v')
-        time.sleep(3.0)
+        time.sleep(2.0)
 
         if player:
             player.write_log("✅ Content pasted into LinkedIn!")
-            player.write_log("👆 Please verify and click Post manually.")
+
+        # If we have an image, open it so user can drag it in
+        if image_path and os.path.exists(image_path):
+            if player:
+                player.write_log(f"📸 Image saved at: {image_path}")
+                player.write_log("💡 Drag the image into the post, or use the media button.")
+            # Open the image file location
+            try:
+                subprocess.run(['explorer', '/select,', image_path], shell=True)
+            except:
+                pass
+
+        edge_speak("Content is pasted. Please review and click Post when ready.", player)
 
     except Exception as e:
         if player:
             player.write_log(f"⚠️ Paste error: {e}")
             player.write_log("📋 Content is on clipboard — Ctrl+V manually.")
+        edge_speak("Sir, content is on your clipboard. Please paste manually.", player)
 
-    # 8. Restore Jarvis window after a delay
-    time.sleep(3.0)
+    # ── Step 8: Restore Jarvis window after delay ───────────
+    time.sleep(5.0)
     try:
         if player and hasattr(player, 'root'):
-            player.root.deiconify()  # Show window again
+            player.root.deiconify()
     except Exception:
         pass
-
-    edge_speak("Content pasted into LinkedIn. Please verify and click Post.", player)

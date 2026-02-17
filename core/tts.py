@@ -1,182 +1,258 @@
 """
-Text-to-Speech module using Microsoft Edge TTS
-Optimized for low latency: split-sentence streaming.
+TTS Engine — ElevenLabs dual-voice system with Edge TTS fallback.
+
+Voices:
+  - English: ElevenLabs voice auq43ws1oslv0tO4BDa7
+  - Hindi:   ElevenLabs voice jUjRbhZWoMK4aDciW36V
+  - Fallback: Edge TTS (en-GB-RyanNeural) if ElevenLabs is down/quota exceeded
 """
-import io
 import re
+import os
+import io
 import threading
-import asyncio
+import tempfile
+import requests
 import sounddevice as sd
 import soundfile as sf
-import edge_tts
-import sys
-import queue
+
+import json
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import TTS_VOICE, TTS_RATE, TTS_VOLUME, TTS_PITCH
+from config import ELEVENLABS_API_KEY
+
+# ── Config ────────────────────────────────────────────────────
+
+
+# Voice IDs from ElevenLabs Voice Library
+VOICE_ENGLISH = "auq43ws1oslv0tO4BDa7"
+VOICE_HINDI = "jUjRbhZWoMK4aDciW36V"
+
+# Edge TTS fallback voice
+EDGE_TTS_VOICE = "en-GB-RyanNeural"
+EDGE_TTS_RATE = "-5%"
+EDGE_TTS_PITCH = "-3Hz"
+
+# ElevenLabs API endpoint
+ELEVENLABS_API_URL = "https://api.elevenlabs.io/v1/text-to-speech"
 
 # ── Speaking state ────────────────────────────────────────────
 stop_speaking_flag = threading.Event()
 _is_speaking = threading.Event()
-_audio_queue = queue.Queue()
+
+# Hindi character detection ranges
+_HINDI_PATTERN = re.compile(r'[\u0900-\u097F\u0980-\u09FF\uA8E0-\uA8FF]')
+
+# Common Hindi words written in English (Romanized Hindi)
+_HINDI_WORDS = {
+    'kya', 'hai', 'kaise', 'ho', 'haan', 'nahi', 'theek', 'accha',
+    'acha', 'bhai', 'yaar', 'karo', 'karna', 'batao', 'bolo', 'sunao',
+    'dekho', 'chalo', 'ruk', 'bas', 'bohot', 'bahut', 'zyada', 'kam',
+    'mujhe', 'tujhe', 'humko', 'tumko', 'unko', 'isko', 'usko',
+    'kaha', 'kab', 'kyun', 'kaun', 'konsa', 'kitna', 'kidhar',
+    'abhi', 'baad', 'pehle', 'phir', 'lekin', 'aur', 'ya', 'par',
+    'mein', 'hum', 'tum', 'woh', 'yeh', 'ye', 'wo', 'ji', 'sahab',
+    'sir', 'baat', 'suno', 'bata', 'bol', 'samjha', 'samjhe',
+    'dhanyawad', 'shukriya', 'namaste', 'alvida', 'thik',
+    'nai', 'mat', 'raha', 'rahi', 'rahe', 'gaya', 'gayi', 'gaye',
+    'chahiye', 'sakta', 'sakti', 'sakte', 'wala', 'wali', 'wale',
+    'kuch', 'sab', 'bilkul', 'zaroor', 'pakka', 'hoga', 'hogi',
+}
+
+
+def _detect_language(text: str) -> str:
+    """
+    Detect if text is Hindi or English.
+    Returns 'hi' for Hindi, 'en' for English.
+    """
+    # Check for Devanagari script
+    if _HINDI_PATTERN.search(text):
+        return 'hi'
+
+    # Check for romanized Hindi words
+    words = set(re.findall(r'[a-zA-Z]+', text.lower()))
+    hindi_count = len(words & _HINDI_WORDS)
+    if len(words) > 0 and hindi_count / len(words) > 0.3:
+        return 'hi'
+
+    return 'en'
+
+
+def _speak_elevenlabs(text: str, voice_id: str) -> bool:
+    """
+    Generate speech using ElevenLabs API.
+    Returns True if successful, False otherwise.
+    """
+    url = f"{ELEVENLABS_API_URL}/{voice_id}"
+
+    headers = {
+        "xi-api-key": ELEVENLABS_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+    }
+
+    payload = {
+        "text": text,
+        "model_id": "eleven_multilingual_v2",
+        "voice_settings": {
+            "stability": 0.5,
+            "similarity_boost": 0.75,
+            "style": 0.0,
+            "use_speaker_boost": True,
+        }
+    }
+
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
+
+        if response.status_code == 200 and len(response.content) > 1000:
+            # Play the audio directly from memory
+            audio_data, sample_rate = sf.read(io.BytesIO(response.content))
+
+            if stop_speaking_flag.is_set():
+                return True
+
+            sd.play(audio_data, sample_rate)
+            sd.wait()
+            return True
+        else:
+            print(f"⚠️ ElevenLabs: HTTP {response.status_code}")
+            return False
+
+    except requests.exceptions.Timeout:
+        print("⚠️ ElevenLabs: timeout")
+        return False
+    except Exception as e:
+        print(f"⚠️ ElevenLabs: {e}")
+        return False
+
+
+def _speak_edge_tts(text: str) -> bool:
+    """
+    Fallback: Use Microsoft Edge TTS (free, no API key).
+    Returns True if successful.
+    """
+    try:
+        import edge_tts
+        import asyncio
+
+        async def _generate_and_play():
+            communicate = edge_tts.Communicate(
+                text,
+                voice=EDGE_TTS_VOICE,
+                rate=EDGE_TTS_RATE,
+                pitch=EDGE_TTS_PITCH,
+            )
+
+            # Collect all audio chunks
+            audio_chunks = []
+            async for chunk in communicate.stream():
+                if stop_speaking_flag.is_set():
+                    return True
+                if chunk["type"] == "audio":
+                    audio_chunks.append(chunk["data"])
+
+            if audio_chunks and not stop_speaking_flag.is_set():
+                full_audio = b"".join(audio_chunks)
+                # Save to temp file and play
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                    f.write(full_audio)
+                    temp_path = f.name
+
+                try:
+                    audio_data, sample_rate = sf.read(temp_path)
+                    sd.play(audio_data, sample_rate)
+                    sd.wait()
+                finally:
+                    try:
+                        os.unlink(temp_path)
+                    except:
+                        pass
+            return True
+
+        # Run async in a new event loop
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(_generate_and_play())
+        finally:
+            loop.close()
+        return True
+
+    except ImportError:
+        print("⚠️ edge-tts not installed, cannot fallback")
+        return False
+    except Exception as e:
+        print(f"⚠️ Edge TTS fallback: {e}")
+        return False
 
 
 def edge_speak(text: str, ui=None, blocking=False):
     """
-    Speak text using Edge TTS with sentence-level streaming.
-    Starts playing the first sentence while downloading the rest.
+    Speak text using ElevenLabs (primary) or Edge TTS (fallback).
+    
+    Auto-detects language:
+    - Hindi text → Hindi ElevenLabs voice
+    - English text → English ElevenLabs voice
+    - If ElevenLabs fails → Edge TTS British Ryan voice
+    
+    Function name kept as edge_speak for backward compatibility.
     """
     if not text or not text.strip():
         return
 
-    # Remove emojis to prevent reading their names
-    # Range covers most common emojis and symbols
-    text = re.sub(r'[\U00010000-\U0010ffff]', '', text)
-
-
-    # Split text into sentences for faster start
-    sentences = re.split(r'(?<=[.!?]) +', text.strip())
-    sentences = [s.strip() for s in sentences if s.strip()]
-
-    if not sentences:
+    # Remove emojis and clean text
+    text = re.sub(r'[\U00010000-\U0010ffff]', '', text).strip()
+    # Remove emoji names like :fire: :sparkles:
+    text = re.sub(r':[a-z_]+:', '', text).strip()
+    if not text:
         return
 
-    finished_event = threading.Event()
+    stop_speaking_flag.clear()
 
-    def _producer_thread():
-        """Download audio for each sentence in order."""
+    def _speak():
         _is_speaking.set()
         if ui:
-            ui.start_speaking()
-        
-        stop_speaking_flag.clear()
+            try:
+                ui.start_speaking()
+            except:
+                pass
 
         try:
-            # Create a new loop for async operations
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            # Detect language and pick voice
+            lang = _detect_language(text)
+            voice_id = VOICE_HINDI if lang == 'hi' else VOICE_ENGLISH
 
-            for sentence in sentences:
-                if stop_speaking_flag.is_set():
-                    break
-                
-                # Fetch audio for this sentence
-                audio_data = loop.run_until_complete(_fetch_audio(sentence))
-                if audio_data:
-                    _audio_queue.put(audio_data)
+            print(f"🔊 Speaking ({lang}): {text[:50]}...")
 
-            loop.close()
+            # Try ElevenLabs first
+            success = _speak_elevenlabs(text, voice_id)
+
+            # Fallback to Edge TTS if ElevenLabs fails
+            if not success and not stop_speaking_flag.is_set():
+                print("🔄 Falling back to Edge TTS...")
+                _speak_edge_tts(text)
+
         except Exception as e:
-            print(f"❌ TTS Download Error: {e}")
-        finally:
-            _audio_queue.put(None)  # Signal end of stream
-
-    def _consumer_thread():
-        """Play audio chunks as they arrive."""
-        try:
-            while not stop_speaking_flag.is_set():
-                audio_data = _audio_queue.get()
-                if audio_data is None:  # End of stream
-                    break
-                
-                _play_audio(audio_data)
-        except Exception as e:
-            print(f"❌ Playback Error: {e}")
+            print(f"⚠️ TTS error: {e}")
         finally:
             _is_speaking.clear()
             if ui:
-                ui.stop_speaking()
-            finished_event.set()
-
-    # Start threads
-    t_prod = threading.Thread(target=_producer_thread, daemon=True)
-    t_cons = threading.Thread(target=_consumer_thread, daemon=True)
-    
-    t_prod.start()
-    t_cons.start()
+                try:
+                    ui.stop_speaking()
+                except:
+                    pass
 
     if blocking:
-        finished_event.wait()
-
-import re as _re_detect  # For Hindi detection
-
-# Hindi detection patterns
-_HINDI_DEVANAGARI = _re_detect.compile(r'[\u0900-\u097F]')
-_HINDI_ROMAN_WORDS = {
-    'kya', 'hai', 'haan', 'nahi', 'bhai', 'yaar', 'acha', 'theek',
-    'kaise', 'kaisa', 'kaha', 'kab', 'kyun', 'karo', 'bata', 'sun',
-    'dekh', 'chal', 'bol', 'samajh', 'ruk', 'abhi', 'bahut', 'bilkul',
-    'suno', 'mujhe', 'tumhe', 'humne', 'maine', 'tum', 'hum', 'mera',
-    'tera', 'uska', 'woh', 'yeh', 'kuch', 'sab', 'aur', 'lekin',
-    'karunga', 'gaya', 'gayi', 'raha', 'rahi', 'hoon', 'ho', 'hain'
-}
-
-def _detect_hindi(text: str) -> bool:
-    """Detect if text is primarily Hindi."""
-    if _HINDI_DEVANAGARI.search(text):
-        return True
-    words = text.lower().split()
-    hindi_count = sum(1 for w in words if w.strip('.,!?') in _HINDI_ROMAN_WORDS)
-    return hindi_count >= max(2, len(words) * 0.3)
-
-
-async def _fetch_audio(text: str) -> bytes:
-    """Fetch audio bytes for a single sentence with dynamic voice selection."""
-    # Pick voice based on language
-    voice = TTS_VOICE  # Default: en-GB-RyanNeural (JARVIS)
-    if _detect_hindi(text):
-        voice = "hi-IN-MadhurNeural"  # Male Hindi voice
-    
-    communicate = edge_tts.Communicate(
-        text=text,
-        voice=voice,
-        rate=TTS_RATE,
-        volume=TTS_VOLUME,
-        pitch=TTS_PITCH,
-    )
-    
-    audio_bytes = io.BytesIO()
-    async for chunk in communicate.stream():
-        if chunk["type"] == "audio":
-            audio_bytes.write(chunk["data"])
-            
-    return audio_bytes.getvalue()
-
-
-def _play_audio(data: bytes):
-    """Decode and play a chunk of audio."""
-    if stop_speaking_flag.is_set():
-        return
-
-    try:
-        # Decode using soundfile
-        with io.BytesIO(data) as f:
-            audio_array, samplerate = sf.read(f, dtype="float32")
-        
-        # Play using sounddevice
-        sd.play(audio_array, samplerate)
-        sd.wait()  # Block until this chunk finishes
-    except Exception as e:
-        print(f"⚠️ Audio decode error: {e}")
+        _speak()
+    else:
+        threading.Thread(target=_speak, daemon=True).start()
 
 
 def stop_speaking():
     """Immediately stop current speech."""
     stop_speaking_flag.set()
     sd.stop()
-    # drain queue
-    while not _audio_queue.empty():
-        try: _audio_queue.get_nowait()
-        except: break
 
 
 def is_speaking() -> bool:
-    """Check if Jarvis is currently speaking."""
+    """Check if currently speaking."""
     return _is_speaking.is_set()
-
-
-async def list_voices(language="en"):
-    """List available TTS voices for a language."""
-    voices = await edge_tts.list_voices()
-    return [v for v in voices if v["Locale"].startswith(language)]

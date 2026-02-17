@@ -24,6 +24,8 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")  # or "deepseek-reasoner"
 SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 
 # Assistant Configuration
 ASSISTANT_NAME = os.getenv("ASSISTANT_NAME", "Tokyo")

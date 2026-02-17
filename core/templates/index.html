@@ -6,7 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#060010">
     <title>Tokyo AI</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500;600;700&display=swap"
+        rel="stylesheet">
     <style>
         *,
         *::before,
@@ -23,8 +24,9 @@
         :root {
             --bg: #060010;
             --accent: #B19EEF;
-            --text: #e0e0f0;
-            --text-dim: #607080;
+            --accent-glow: rgba(177, 158, 239, 0.4);
+            --text: #eeeeff;
+            --text-dim: rgba(177, 158, 239, 0.45);
         }
 
         body {
@@ -39,7 +41,7 @@
             position: relative;
         }
 
-        /* ═══════ GHOST CURSOR ═══════ */
+        /* ═══════ GHOST CURSOR HOST ═══════ */
         .ghost-cursor {
             position: fixed;
             inset: 0;
@@ -47,10 +49,11 @@
             z-index: 0;
         }
 
-        .ghost-cursor canvas {
+        .ghost-cursor>canvas {
             display: block;
             width: 100%;
             height: 100%;
+            background: transparent;
         }
 
         /* ═══════ HEADER ═══════ */
@@ -58,43 +61,71 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 18px 24px;
+            padding: 20px 28px;
             z-index: 10;
-            background: linear-gradient(180deg, rgba(6, 0, 16, 0.7), transparent);
+            position: relative;
         }
 
         .header h1 {
-            font-size: 1.15rem;
-            font-weight: 500;
-            letter-spacing: 4px;
-            color: rgba(177, 158, 239, 0.8);
+            font-size: 1.3rem;
+            font-weight: 600;
+            letter-spacing: 5px;
+            color: #fff;
+            text-shadow: 0 0 20px var(--accent-glow);
+        }
+
+        .header-subtitle {
+            font-size: 0.7rem;
+            font-weight: 300;
+            letter-spacing: 3px;
+            color: var(--text-dim);
+            margin-top: 2px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: rgba(177, 158, 239, 0.08);
+            border: 1px solid rgba(177, 158, 239, 0.15);
         }
 
         .status-dot {
             width: 7px;
             height: 7px;
             border-radius: 50%;
-            background: #B19EEF;
-            box-shadow: 0 0 8px rgba(177, 158, 239, 0.6);
-            animation: pulse 2s infinite;
+            background: #7cfc7c;
+            box-shadow: 0 0 8px rgba(124, 252, 124, 0.6);
+            animation: pulseDot 2s infinite;
         }
 
-        @keyframes pulse {
+        .status-text {
+            font-size: 0.7rem;
+            font-weight: 400;
+            letter-spacing: 1px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        @keyframes pulseDot {
 
             0%,
             100% {
-                opacity: 0.4;
+                opacity: 0.5;
+                transform: scale(1);
             }
 
             50% {
                 opacity: 1;
+                transform: scale(1.3);
             }
         }
 
         /* ═══════ ORB ═══════ */
         #orb-canvas {
             width: 100%;
-            height: 180px;
+            height: 200px;
             flex-shrink: 0;
             z-index: 1;
         }
@@ -104,33 +135,63 @@
             flex: 1;
             overflow-y: auto;
             scroll-behavior: smooth;
-            padding: 0 24px 100px;
+            padding: 0 28px 110px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            gap: 12px;
             scrollbar-width: none;
             z-index: 2;
         }
 
+        .chat-area::-webkit-scrollbar {
+            display: none;
+        }
+
         .msg {
             max-width: 80%;
-            padding: 10px 16px;
-            border-radius: 14px;
+            padding: 12px 18px;
+            padding-top: 28px;
+            border-radius: 16px;
             font-size: 0.95rem;
-            line-height: 1.5;
-            animation: fadeIn 0.3s ease;
+            line-height: 1.6;
+            position: relative;
+            animation: msgSlide 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
         }
 
         .msg.user {
             align-self: flex-end;
-            background: rgba(177, 158, 239, 0.1);
-            color: #d0c0ff;
+            background: rgba(177, 158, 239, 0.12);
+            border: 1px solid rgba(177, 158, 239, 0.15);
+            color: #e0d4ff;
         }
 
-        .msg.ai {
+        .msg.user::before {
+            content: 'YOU';
+            position: absolute;
+            top: 8px;
+            right: 18px;
+            font-size: 0.55rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            color: rgba(177, 158, 239, 0.5);
+        }
+
+        .msg.tokyo {
             align-self: flex-start;
-            background: rgba(255, 255, 255, 0.03);
-            color: #c0c0d0;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            color: #d0d0e8;
+        }
+
+        .msg.tokyo::before {
+            content: 'TOKYO';
+            position: absolute;
+            top: 8px;
+            left: 18px;
+            font-size: 0.55rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            color: var(--accent);
         }
 
         .msg.system {
@@ -138,14 +199,33 @@
             background: none;
             border: none;
             color: var(--text-dim);
-            font-size: 0.75rem;
-            letter-spacing: 1px;
+            font-size: 0.78rem;
+            letter-spacing: 1.5px;
         }
 
-        @keyframes fadeIn {
+        .welcome-msg {
+            text-align: center;
+            padding: 30px 20px 10px;
+            animation: fadeInUp 0.6s ease;
+        }
+
+        .welcome-msg h2 {
+            font-size: 1.4rem;
+            font-weight: 300;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 6px;
+        }
+
+        .welcome-msg p {
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            font-weight: 300;
+        }
+
+        @keyframes msgSlide {
             from {
                 opacity: 0;
-                transform: translateY(6px);
+                transform: translateY(12px);
             }
 
             to {
@@ -154,78 +234,131 @@
             }
         }
 
-        /* ═══════ INPUT ═══════ */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ═══════ INPUT BAR ═══════ */
         .input-bar {
             position: fixed;
             bottom: 0;
             left: 0;
             width: 100%;
-            padding: 16px 24px 28px;
+            padding: 18px 28px 32px;
             display: flex;
             align-items: center;
             gap: 14px;
-            background: linear-gradient(0deg, var(--bg) 60%, transparent);
+            background: linear-gradient(0deg, var(--bg) 50%, transparent);
             z-index: 10;
         }
 
         .mic-btn {
-            width: 50px;
-            height: 50px;
+            width: 52px;
+            height: 52px;
             border-radius: 50%;
-            background: rgba(177, 158, 239, 0.08);
-            border: 1px solid rgba(177, 158, 239, 0.15);
+            background: rgba(177, 158, 239, 0.1);
+            border: 1px solid rgba(177, 158, 239, 0.2);
             color: var(--accent);
             font-size: 1.3rem;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .mic-btn:hover {
+            background: rgba(177, 158, 239, 0.2);
+            border-color: rgba(177, 158, 239, 0.4);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(177, 158, 239, 0.2);
         }
 
         .mic-btn:active {
-            transform: scale(0.9);
+            transform: scale(0.92);
         }
 
         .mic-btn.active {
-            background: rgba(255, 80, 80, 0.1);
-            border-color: rgba(255, 80, 80, 0.3);
-            color: #ff5050;
-            box-shadow: 0 0 20px rgba(255, 80, 80, 0.2);
+            background: rgba(255, 60, 60, 0.12);
+            border-color: rgba(255, 60, 60, 0.4);
+            color: #ff4444;
+            box-shadow: 0 0 25px rgba(255, 60, 60, 0.25);
+            animation: micPulse 1.5s infinite;
         }
 
-        input {
+        @keyframes micPulse {
+
+            0%,
+            100% {
+                box-shadow: 0 0 15px rgba(255, 60, 60, 0.15);
+            }
+
+            50% {
+                box-shadow: 0 0 30px rgba(255, 60, 60, 0.35);
+            }
+        }
+
+        .input-wrapper {
             flex: 1;
-            background: transparent;
-            border: none;
-            border-bottom: 1px solid rgba(177, 158, 239, 0.1);
+            position: relative;
+        }
+
+        .input-wrapper input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(177, 158, 239, 0.12);
+            border-radius: 14px;
             color: #fff;
             font-size: 1rem;
             font-family: inherit;
-            padding: 10px 4px;
+            padding: 14px 18px;
             outline: none;
+            transition: all 0.3s ease;
         }
 
-        input::placeholder {
+        .input-wrapper input::placeholder {
             color: var(--text-dim);
         }
 
-        input:focus {
-            border-bottom-color: rgba(177, 158, 239, 0.3);
+        .input-wrapper input:focus {
+            border-color: rgba(177, 158, 239, 0.35);
+            background: rgba(255, 255, 255, 0.06);
+            box-shadow: 0 0 20px rgba(177, 158, 239, 0.1);
         }
 
         .send-btn {
-            background: none;
-            border: none;
-            color: rgba(177, 158, 239, 0.6);
-            font-size: 0.85rem;
-            font-weight: 500;
-            letter-spacing: 1px;
+            background: rgba(177, 158, 239, 0.12);
+            border: 1px solid rgba(177, 158, 239, 0.2);
+            color: var(--accent);
+            font-size: 0.8rem;
+            font-weight: 600;
+            font-family: inherit;
+            letter-spacing: 2px;
+            padding: 14px 22px;
+            border-radius: 14px;
             cursor: pointer;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
         }
 
         .send-btn:hover {
-            color: var(--accent);
+            background: rgba(177, 158, 239, 0.2);
+            border-color: rgba(177, 158, 239, 0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(177, 158, 239, 0.15);
+        }
+
+        .send-btn:active {
+            transform: translateY(0) scale(0.97);
         }
     </style>
 </head>
@@ -237,8 +370,14 @@
 
     <!-- Header -->
     <div class="header">
-        <h1>TOKYO</h1>
-        <div class="status-dot" id="statusDot"></div>
+        <div>
+            <h1>TOKYO</h1>
+            <div class="header-subtitle">AI ASSISTANT</div>
+        </div>
+        <div class="status-badge">
+            <div class="status-dot" id="statusDot"></div>
+            <span class="status-text">ONLINE</span>
+        </div>
     </div>
 
     <!-- Orb -->
@@ -246,13 +385,18 @@
 
     <!-- Chat -->
     <div class="chat-area" id="chat">
-        <div class="msg system">Ready</div>
+        <div class="welcome-msg">
+            <h2>Welcome back</h2>
+            <p>How can I help you today?</p>
+        </div>
     </div>
 
     <!-- Input -->
     <div class="input-bar">
         <div class="mic-btn" id="micBtn" onclick="toggleMic()">🎙</div>
-        <input type="text" id="textInput" placeholder="Ask anything..." autocomplete="off">
+        <div class="input-wrapper">
+            <input type="text" id="textInput" placeholder="Ask Tokyo anything..." autocomplete="off">
+        </div>
         <button class="send-btn" onclick="sendText()">SEND</button>
     </div>
 
@@ -262,12 +406,16 @@
         const input = document.getElementById('textInput');
         const micBtn = document.getElementById('micBtn');
 
-        function addMsg(text, type = 'ai') {
+        function addMsg(text, type = 'tokyo') {
+            // Remove welcome message on first real message
+            const welcome = chat.querySelector('.welcome-msg');
+            if (welcome) welcome.remove();
+
             const d = document.createElement('div');
             d.className = `msg ${type}`;
             d.textContent = text;
             chat.appendChild(d);
-            chat.scrollTop = chat.scrollHeight;
+            chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
         }
 
         async function cmd(text) {
@@ -275,15 +423,21 @@
             addMsg(text, 'user');
             try {
                 const res = await fetch('/command', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text })
                 });
                 const data = await res.json();
-                if (data.response) addMsg(data.response, 'ai');
-            } catch (e) { addMsg('Connection error', 'system'); }
+                if (data.response) addMsg(data.response, 'tokyo');
+            } catch (e) {
+                addMsg('Connection error — is Tokyo running?', 'system');
+            }
         }
 
-        function sendText() { const t = input.value.trim(); if (t) { cmd(t); input.value = ''; } }
+        function sendText() {
+            const t = input.value.trim();
+            if (t) { cmd(t); input.value = ''; }
+        }
         input.addEventListener('keydown', e => { if (e.key === 'Enter') sendText(); });
 
         // Voice
@@ -291,24 +445,32 @@
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SR();
-            recognition.continuous = false; recognition.interimResults = false;
+            recognition.continuous = false;
+            recognition.interimResults = false;
             recognition.onstart = () => { isListening = true; micBtn.classList.add('active'); };
             recognition.onend = () => { isListening = false; micBtn.classList.remove('active'); };
             recognition.onresult = e => cmd(e.results[0][0].transcript);
         }
-        function toggleMic() { if (recognition) isListening ? recognition.stop() : recognition.start(); }
+        function toggleMic() {
+            if (recognition) isListening ? recognition.stop() : recognition.start();
+        }
 
         // SSE
         function connectSSE() {
             const es = new EventSource('/stream');
             es.onmessage = e => {
-                try { const d = JSON.parse(e.data); if (d.type === 'response') addMsg(d.text, 'ai'); } catch (err) { }
+                try {
+                    const d = JSON.parse(e.data);
+                    if (d.type === 'response') addMsg(d.text, 'tokyo');
+                } catch (err) { }
             };
             es.onerror = () => { es.close(); setTimeout(connectSSE, 3000); };
         }
         connectSSE();
+    </script>
 
-        // Orb (lightweight canvas)
+    <!-- ═══════ ORB ANIMATION ═══════ -->
+    <script>
         const cvs = document.getElementById('orb-canvas');
         const ctx = cvs.getContext('2d');
         let W, H;
@@ -317,44 +479,56 @@
             H = cvs.clientHeight * devicePixelRatio;
             cvs.width = W; cvs.height = H;
         }
-        window.addEventListener('resize', resizeOrb); resizeOrb();
+        window.addEventListener('resize', resizeOrb);
+        resizeOrb();
+
         (function drawOrb() {
             requestAnimationFrame(drawOrb);
             ctx.clearRect(0, 0, W, H);
             const cx = W / 2, cy = H / 2;
             const t = Date.now() * 0.001;
-            const r = Math.min(W, H) * 0.12 + Math.sin(t * 1.5) * 3;
+            const r = Math.min(W, H) * 0.14 + Math.sin(t * 1.5) * 4;
 
-            // Soft glow
+            // Outer glow
             const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 4);
-            g.addColorStop(0, 'rgba(177, 158, 239, 0.15)');
-            g.addColorStop(0.5, 'rgba(100, 80, 180, 0.05)');
+            g.addColorStop(0, 'rgba(177, 158, 239, 0.12)');
+            g.addColorStop(0.5, 'rgba(100, 80, 180, 0.04)');
             g.addColorStop(1, 'transparent');
             ctx.fillStyle = g;
             ctx.beginPath(); ctx.arc(cx, cy, r * 4, 0, Math.PI * 2); ctx.fill();
 
-            // Core
+            // Core orb
             const cg = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-            cg.addColorStop(0, '#e0d0ff');
-            cg.addColorStop(0.5, '#B19EEF');
-            cg.addColorStop(1, '#4030a0');
+            cg.addColorStop(0, '#e8ddff');
+            cg.addColorStop(0.4, '#B19EEF');
+            cg.addColorStop(1, '#4a3090');
             ctx.fillStyle = cg;
             ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
 
-            // Ring
-            ctx.strokeStyle = 'rgba(177, 158, 239, 0.2)';
-            ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.ellipse(cx, cy, r * 2.5, r * 0.7, t * 0.3, 0, Math.PI * 2); ctx.stroke();
+            // Orbital ring
+            ctx.strokeStyle = 'rgba(177, 158, 239, 0.25)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, r * 2.5, r * 0.6, t * 0.3, 0, Math.PI * 2);
+            ctx.stroke();
 
-            // Letter
+            // Second ring
+            ctx.strokeStyle = 'rgba(177, 158, 239, 0.12)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, r * 1.8, r * 0.5, -t * 0.5, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // T letter
             ctx.fillStyle = '#fff';
-            ctx.font = `500 ${r * 0.7}px Outfit`;
-            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.font = `600 ${r * 0.7}px Outfit`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
             ctx.fillText('T', cx, cy);
         })();
     </script>
 
-    <!-- ═══════ GHOST CURSOR — Faithful ReactBits port ═══════ -->
+    <!-- ═══════ GHOST CURSOR — ReactBits Port ═══════ -->
     <script type="importmap">
     {
       "imports": {
@@ -371,10 +545,10 @@
         import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
         const host = document.getElementById('ghostHost');
-        if (!host) throw 'no host';
+        if (!host) { console.error('Ghost cursor host not found'); }
 
-        // ── Config (ReactBits defaults) ──
-        const TRAIL = 50;
+        // ── Config matching ReactBits usage ──
+        const TRAIL = 20;       // Reduced from 50 for performance
         const INERTIA = 0.5;
         const GRAIN = 0.05;
         const BLOOM_STR = 0.1;
@@ -382,20 +556,25 @@
         const BLOOM_THR = 0.025;
         const BRIGHTNESS = 2;
         const COLOR = new THREE.Color('#B19EEF');
-        const MAX_DPR = 0.5;
+        const MAX_DPR = 1.0;      // Better quality rendering
         const FADE_DELAY = 1000;
         const FADE_DUR = 1500;
+        const MIX_BLEND = 'screen';
 
         // ── Renderer ──
         const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
         const renderer = new THREE.WebGLRenderer({
-            antialias: !isTouch, alpha: true, depth: false, stencil: false,
-            powerPreference: isTouch ? 'low-power' : 'high-performance',
-            premultipliedAlpha: false, preserveDrawingBuffer: false
+            antialias: false,
+            alpha: true,
+            depth: false,
+            stencil: false,
+            powerPreference: 'high-performance',
+            premultipliedAlpha: false,
+            preserveDrawingBuffer: false
         });
         renderer.setClearColor(0x000000, 0);
         renderer.domElement.style.pointerEvents = 'none';
-        renderer.domElement.style.mixBlendMode = 'screen';
+        renderer.domElement.style.mixBlendMode = MIX_BLEND;
         host.appendChild(renderer.domElement);
 
         const scene = new THREE.Scene();
@@ -405,13 +584,12 @@
         const trailBuf = Array.from({ length: TRAIL }, () => new THREE.Vector2(0.5, 0.5));
         let head = 0;
 
-        // ── Vertex shader ──
+        // ── Shaders (exact ReactBits fbm noise) ──
         const vertSrc = `
       varying vec2 vUv;
       void main() { vUv = uv; gl_Position = vec4(position, 1.0); }
     `;
 
-        // ── Fragment shader (EXACT ReactBits) ──
         const fragSrc = `
       #define MAX_TRAIL_LENGTH ${TRAIL}
       uniform float iTime;
@@ -422,33 +600,43 @@
       uniform float iScale;
       uniform vec3  iBaseColor;
       uniform float iBrightness;
-      uniform float iEdgeIntensity;
       varying vec2  vUv;
 
-      float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7))) * 43758.5453123); }
-      float noise(vec2 p){
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+
+      float noise(vec2 p) {
         vec2 i = floor(p), f = fract(p);
-        f *= f * (3. - 2. * f);
-        return mix(mix(hash(i + vec2(0.,0.)), hash(i + vec2(1.,0.)), f.x),
-                   mix(hash(i + vec2(0.,1.)), hash(i + vec2(1.,1.)), f.x), f.y);
+        f *= f * (3.0 - 2.0 * f);
+        return mix(
+          mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+          mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x),
+          f.y
+        );
       }
-      float fbm(vec2 p){
-        float v = 0.0;
-        float a = 0.5;
+
+      float fbm(vec2 p) {
+        float v = 0.0, a = 0.5;
         mat2 m = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
-        for(int i=0;i<5;i++){
+        for (int i = 0; i < 5; i++) {
           v += a * noise(p);
           p = m * p * 2.0;
           a *= 0.5;
         }
         return v;
       }
-      vec3 tint1(vec3 base){ return mix(base, vec3(1.0), 0.15); }
-      vec3 tint2(vec3 base){ return mix(base, vec3(0.8, 0.9, 1.0), 0.25); }
+
+      vec3 tint1(vec3 base) { return mix(base, vec3(1.0), 0.15); }
+      vec3 tint2(vec3 base) { return mix(base, vec3(0.8, 0.9, 1.0), 0.25); }
 
       vec4 blob(vec2 p, vec2 mousePos, float intensity, float activity) {
-        vec2 q = vec2(fbm(p * iScale + iTime * 0.1), fbm(p * iScale + vec2(5.2,1.3) + iTime * 0.1));
-        vec2 r = vec2(fbm(p * iScale + q * 1.5 + iTime * 0.15), fbm(p * iScale + q * 1.5 + vec2(8.3,2.8) + iTime * 0.15));
+        vec2 q = vec2(
+          fbm(p * iScale + iTime * 0.1),
+          fbm(p * iScale + vec2(5.2, 1.3) + iTime * 0.1)
+        );
+        vec2 r = vec2(
+          fbm(p * iScale + q * 1.5 + iTime * 0.15),
+          fbm(p * iScale + q * 1.5 + vec2(8.3, 2.8) + iTime * 0.15)
+        );
 
         float smoke = fbm(p * iScale + r * 0.8);
         float radius = 0.5 + 0.3 * (1.0 / iScale);
@@ -469,10 +657,12 @@
         vec3 colorAcc = vec3(0.0);
         float alphaAcc = 0.0;
 
+        // Head blob
         vec4 b = blob(uv, mouse, 1.0, iOpacity);
         colorAcc += b.rgb;
         alphaAcc += b.a;
 
+        // Trail blobs
         for (int i = 0; i < MAX_TRAIL_LENGTH; i++) {
           vec2 pm = (iPrevMouse[i] * 2.0 - 1.0) * vec2(iResolution.x / iResolution.y, 1.0);
           float t = 1.0 - float(i) / float(MAX_TRAIL_LENGTH);
@@ -485,14 +675,7 @@
         }
 
         colorAcc *= iBrightness;
-
-        vec2 uv01 = gl_FragCoord.xy / iResolution.xy;
-        float edgeDist = min(min(uv01.x, 1.0 - uv01.x), min(uv01.y, 1.0 - uv01.y));
-        float distFromEdge = clamp(edgeDist * 2.0, 0.0, 1.0);
-        float k = clamp(iEdgeIntensity, 0.0, 1.0);
-        float edgeMask = mix(1.0 - k, 1.0, distFromEdge);
-
-        float outAlpha = clamp(alphaAcc * iOpacity * edgeMask, 0.0, 1.0);
+        float outAlpha = clamp(alphaAcc * iOpacity, 0.0, 1.0);
         gl_FragColor = vec4(colorAcc, outAlpha);
       }
     `;
@@ -506,34 +689,34 @@
             },
             vertexShader: `
         varying vec2 vUv;
-        void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
       `,
             fragmentShader: `
         uniform sampler2D tDiffuse;
         uniform float iTime;
         uniform float intensity;
         varying vec2 vUv;
-        float hash1(float n){ return fract(sin(n)*43758.5453); }
-        void main(){
+        float hash1(float n) { return fract(sin(n) * 43758.5453); }
+        void main() {
           vec4 color = texture2D(tDiffuse, vUv);
-          float n = hash1(vUv.x*1000.0 + vUv.y*2000.0 + iTime) * 2.0 - 1.0;
+          float n = hash1(vUv.x * 1000.0 + vUv.y * 2000.0 + iTime) * 2.0 - 1.0;
           color.rgb += n * intensity * color.rgb;
           gl_FragColor = color;
         }
       `
         };
 
-        // ── Unpremultiply Pass ──
+        // ── Unpremultiply Shader ──
         const UnpremultiplyShader = {
             uniforms: { tDiffuse: { value: null } },
             vertexShader: `
         varying vec2 vUv;
-        void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
       `,
             fragmentShader: `
         uniform sampler2D tDiffuse;
         varying vec2 vUv;
-        void main(){
+        void main() {
           vec4 c = texture2D(tDiffuse, vUv);
           float a = max(c.a, 1e-5);
           vec3 straight = c.rgb / a;
@@ -544,9 +727,9 @@
 
         // ── Material ──
         function calcScale() {
-            const base = 600;
-            const current = Math.min(Math.max(1, window.innerWidth), Math.max(1, window.innerHeight));
-            return Math.max(0.5, Math.min(2.0, current / base));
+            return Math.max(0.5, Math.min(2.0,
+                Math.min(Math.max(1, window.innerWidth), Math.max(1, window.innerHeight)) / 600
+            ));
         }
 
         const material = new THREE.ShaderMaterial({
@@ -559,8 +742,7 @@
                 iOpacity: { value: 1.0 },
                 iScale: { value: calcScale() },
                 iBaseColor: { value: new THREE.Vector3(COLOR.r, COLOR.g, COLOR.b) },
-                iBrightness: { value: BRIGHTNESS },
-                iEdgeIntensity: { value: 0 }
+                iBrightness: { value: BRIGHTNESS }
             },
             vertexShader: vertSrc,
             fragmentShader: fragSrc,
@@ -571,18 +753,13 @@
 
         scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
 
-        // ── Post-processing ──
+        // ── Post-processing pipeline ──
         const composer = new EffectComposer(renderer);
         composer.addPass(new RenderPass(scene, camera));
-
         const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), BLOOM_STR, BLOOM_RAD, BLOOM_THR);
         composer.addPass(bloomPass);
-
-        const filmPass = new ShaderPass(FilmGrainShader);
-        composer.addPass(filmPass);
-
-        const unpremPass = new ShaderPass(UnpremultiplyShader);
-        composer.addPass(unpremPass);
+        composer.addPass(new ShaderPass(FilmGrainShader));
+        composer.addPass(new ShaderPass(UnpremultiplyShader));
 
         // ── Resize ──
         const pixelBudget = isTouch ? 0.9e6 : 1.3e6;
@@ -591,7 +768,7 @@
             const cssH = Math.max(1, window.innerHeight);
             const dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
             const need = cssW * cssH * dpr * dpr;
-            const scale = need <= pixelBudget ? 1 : Math.max(0.5, Math.min(1, Math.sqrt(pixelBudget / Math.max(1, need))));
+            const scale = need <= pixelBudget ? 1 : Math.max(0.5, Math.sqrt(pixelBudget / need));
             const pr = dpr * scale;
 
             renderer.setPixelRatio(pr);
@@ -607,7 +784,7 @@
         onResize();
         window.addEventListener('resize', onResize);
 
-        // ── Pointer ──
+        // ── Pointer tracking ──
         const mouse = new THREE.Vector2(0.5, 0.5);
         const velocity = new THREE.Vector2(0, 0);
         let pointerActive = false;
@@ -615,30 +792,43 @@
         let fadeOpacity = 1.0;
         let running = true;
 
+        // Listen on document for full-page tracking
         document.addEventListener('pointermove', e => {
-            const x = e.clientX / window.innerWidth;
-            const y = 1 - e.clientY / window.innerHeight;
             mouse.set(
-                THREE.MathUtils.clamp(x, 0, 1),
-                THREE.MathUtils.clamp(y, 0, 1)
+                THREE.MathUtils.clamp(e.clientX / window.innerWidth, 0, 1),
+                THREE.MathUtils.clamp(1 - e.clientY / window.innerHeight, 0, 1)
             );
             pointerActive = true;
             lastMoveTime = performance.now();
             ensureLoop();
         }, { passive: true });
 
-        document.addEventListener('pointerenter', () => { pointerActive = true; ensureLoop(); }, { passive: true });
-        document.addEventListener('pointerleave', () => { pointerActive = false; lastMoveTime = performance.now(); ensureLoop(); }, { passive: true });
+        // Touch support
+        document.addEventListener('touchmove', e => {
+            if (e.touches.length > 0) {
+                const touch = e.touches[0];
+                mouse.set(
+                    THREE.MathUtils.clamp(touch.clientX / window.innerWidth, 0, 1),
+                    THREE.MathUtils.clamp(1 - touch.clientY / window.innerHeight, 0, 1)
+                );
+                pointerActive = true;
+                lastMoveTime = performance.now();
+                ensureLoop();
+            }
+        }, { passive: true });
+
+        document.addEventListener('pointerleave', () => {
+            pointerActive = false;
+            lastMoveTime = performance.now();
+        });
 
         function ensureLoop() {
-            if (!running) {
-                running = true;
-                requestAnimationFrame(animate);
-            }
+            if (!running) { running = true; requestAnimationFrame(animate); }
         }
 
-        // ── Animate ──
+        // ── Animation loop ──
         const startTime = performance.now();
+        const filmPass = composer.passes[2]; // Film grain pass
 
         function animate() {
             const now = performance.now();
@@ -658,40 +848,31 @@
                 }
                 const dt = now - lastMoveTime;
                 if (dt > FADE_DELAY) {
-                    const k = Math.min(1, (dt - FADE_DELAY) / FADE_DUR);
-                    fadeOpacity = Math.max(0, 1 - k);
+                    fadeOpacity = Math.max(0, 1 - Math.min(1, (dt - FADE_DELAY) / FADE_DUR));
                 }
             }
 
-            // Update trail
+            // Update trail ring buffer
             head = (head + 1) % TRAIL;
             trailBuf[head].copy(material.uniforms.iMouse.value);
             const arr = material.uniforms.iPrevMouse.value;
             for (let i = 0; i < TRAIL; i++) {
-                const srcIdx = (head - i + TRAIL) % TRAIL;
-                arr[i].copy(trailBuf[srcIdx]);
+                arr[i].copy(trailBuf[(head - i + TRAIL) % TRAIL]);
             }
 
             material.uniforms.iOpacity.value = fadeOpacity;
             material.uniforms.iTime.value = t;
-
-            if (filmPass.uniforms?.iTime) {
-                filmPass.uniforms.iTime.value = t;
-            }
+            if (filmPass?.uniforms?.iTime) filmPass.uniforms.iTime.value = t;
 
             composer.render();
 
-            // Pause when fully faded
-            if (!pointerActive && fadeOpacity <= 0.001) {
-                running = false;
-                return;
-            }
-
+            if (!pointerActive && fadeOpacity <= 0.001) { running = false; return; }
             requestAnimationFrame(animate);
         }
 
-        // Start
+        // Start immediately
         ensureLoop();
+        console.log('✅ GhostCursor initialized — move your cursor!');
     </script>
 </body>
 

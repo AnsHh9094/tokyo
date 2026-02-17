@@ -17,7 +17,10 @@ def find_spotify():
             found = hwnd
             return False
         return True
-    proc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
+    
+    # EnumWindowsProc should take handles/longs, not pointers to ints
+    # WINFUNCTYPE(restype, argtypes...)
+    proc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
     ctypes.windll.user32.EnumWindows(proc(cb), 0)
     return found
 

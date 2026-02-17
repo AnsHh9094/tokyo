@@ -101,59 +101,60 @@ class WakeWordListener:
         return False
 
     def _listen_loop(self):
-        """Main audio processing loop using shared AudioHub."""
-        try:
-            recognizer = KaldiRecognizer(self.model, self.sample_rate)
-            recognizer.SetWords(False)  # Don't need word-level timestamps
-            
-            # Use a queue to receive audio from AudioHub
-            audio_queue = queue.Queue(maxsize=50) # Buffer ~12.5s of audio
+        """Main audio processing loop with auto-recovery."""
+        from core.audio_hub import audio_hub
 
-            # Register with AudioHub
-            from core.audio_hub import audio_hub
-            audio_hub.register(audio_queue)
+        while not self._stop_event.is_set():
+            try:
+                recognizer = KaldiRecognizer(self.model, self.sample_rate)
+                recognizer.SetWords(False)
+                
+                audio_queue = queue.Queue(maxsize=50)
+                audio_hub.register(audio_queue)
 
-            while not self._stop_event.is_set():
-                if self.paused or not self.running:
-                    time.sleep(0.1)
-                    # Drain queue while paused to prevent old audio processing
-                    while not audio_queue.empty():
-                        try: audio_queue.get_nowait()
-                        except: break
-                    continue
+                while not self._stop_event.is_set():
+                    if self.paused or not self.running:
+                        time.sleep(0.1)
+                        while not audio_queue.empty():
+                            try: audio_queue.get_nowait()
+                            except: break
+                        continue
 
-                try:
-                    data = audio_queue.get(timeout=1.0)
-                except queue.Empty:
-                    continue
+                    try:
+                        data = audio_queue.get(timeout=1.0)
+                    except queue.Empty:
+                        continue
 
-                if recognizer.AcceptWaveform(data):
-                    result = json.loads(recognizer.Result())
-                    text = result.get("text", "")
-                    if text and self._check_for_wake_phrase(text):
-                        now = time.time()
-                        if now - self._last_wake_time > self.cooldown:
-                            self._last_wake_time = now
-                            print(f"🎤 Wake phrase detected: '{text}'") 
-                            if self.on_wake:
-                                self.on_wake()
-                else:
-                    # Check partial results too for faster detection
-                    partial = json.loads(recognizer.PartialResult())
-                    partial_text = partial.get("partial", "")
-                    if partial_text and self._check_for_wake_phrase(partial_text):
-                        now = time.time()
-                        if now - self._last_wake_time > self.cooldown:
-                            self._last_wake_time = now
-                            print(f"🎤 Wake phrase detected (partial): '{partial_text}'")
-                            if self.on_wake:
-                                self.on_wake()
-                            # Reset recognizer to prevent duplicate triggers
-                            recognizer.Reset()
+                    if recognizer.AcceptWaveform(data):
+                        result = json.loads(recognizer.Result())
+                        text = result.get("text", "")
+                        if text and self._check_for_wake_phrase(text):
+                            now = time.time()
+                            if now - self._last_wake_time > self.cooldown:
+                                self._last_wake_time = now
+                                print(f"🎤 Wake phrase detected: '{text}'") 
+                                if self.on_wake:
+                                    self.on_wake()
+                    else:
+                        partial = json.loads(recognizer.PartialResult())
+                        partial_text = partial.get("partial", "")
+                        if partial_text and self._check_for_wake_phrase(partial_text):
+                            now = time.time()
+                            if now - self._last_wake_time > self.cooldown:
+                                self._last_wake_time = now
+                                print(f"🎤 Wake phrase detected (partial): '{partial_text}'")
+                                if self.on_wake:
+                                    self.on_wake()
+                                recognizer.Reset()
 
-            # Cleanup
-            audio_hub.unregister(audio_queue)
+            except Exception as e:
+                print(f"❌ Wake Word Listener Error: {e}, auto-restarting in 2s...")
+            finally:
+                try: audio_hub.unregister(audio_queue)
+                except: pass
 
-        except Exception as e:
-            print(f"❌ Wake Word Listener Error: {e}")
-            self.running = False
+            # Back off before retry (unless we're stopping)
+            if not self._stop_event.is_set():
+                time.sleep(2.0)
+
+        self.running = False

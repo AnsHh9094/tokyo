@@ -1,7 +1,7 @@
 """
-Jarvis AI — LLM Engine
-Uses OpenRouter API with free models (same as Mark-X.1).
-Falls back to DeepSeek if configured.
+Tokyo AI — LLM Engine (OpenRouter)
+Uses OpenRouter API with free models for intelligent conversation,
+code generation, problem solving, and natural interaction.
 """
 import os
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from config import ASSISTANT_NAME, CONFIG_DIR
+from config import ASSISTANT_NAME, CONFIG_DIR, OPENROUTER_API_KEY
 
 # ── OpenRouter Configuration ─────────────────────────────────
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -20,27 +20,15 @@ MODEL = "arcee-ai/trinity-large-preview:free"
 # ── Paths ─────────────────────────────────────────────────────
 CORE_DIR = Path(__file__).parent
 PROMPT_PATH = CORE_DIR / "prompt.txt"
-API_CONFIG_PATH = CONFIG_DIR / "api_keys.json"
 
 
 # ── API Keys ──────────────────────────────────────────────────
 
-def load_api_keys() -> dict:
-    """Load API keys from config file."""
-    if not API_CONFIG_PATH.exists():
-        return {}
-    try:
-        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"❌ Failed to read api_keys.json: {e}")
-        return {}
-
+# ── API Keys ──────────────────────────────────────────────────
 
 def get_openrouter_key() -> str | None:
     """Get OpenRouter API key."""
-    keys = load_api_keys()
-    return keys.get("openrouter_api_key") or os.environ.get("OPENROUTER_API_KEY")
+    return OPENROUTER_API_KEY
 
 
 # ── System Prompt ─────────────────────────────────────────────
@@ -98,7 +86,7 @@ def safe_json_parse(text: str) -> dict | None:
 def get_llm_output(user_text: str, memory_block: dict | None = None) -> dict:
     """
     Send user text to OpenRouter and get structured JSON response.
-    Uses free Llama model — no payment required.
+    Uses free model — no payment required.
     """
     default = {
         "intent": "chat",
@@ -152,7 +140,7 @@ Known user memory:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": "http://localhost",
-        "X-Title": "Jarvis-Assistant"
+        "X-Title": "Tokyo-Assistant"
     }
 
     try:
@@ -244,7 +232,7 @@ def generate_text(prompt: str, system_prompt: str = None) -> str | None:
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
         "HTTP-Referer": "http://localhost",
-        "X-Title": "Jarvis-Assistant"
+        "X-Title": "Tokyo-Assistant"
     }
 
     try:
@@ -288,7 +276,7 @@ def test_connection() -> tuple[bool, str]:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "http://localhost",
-            "X-Title": "Jarvis-Assistant"
+            "X-Title": "Tokyo-Assistant"
         }
 
         response = requests.post(
